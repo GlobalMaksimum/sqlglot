@@ -227,6 +227,20 @@ class SingleStore(Dialect):
         TRANSFORMS.pop(exp.ToMap)
         TRANSFORMS.pop(exp.VarMap)
         TRANSFORMS.pop(exp.SwapTable)
+        TRANSFORMS.pop(exp.CaseSpecificColumnConstraint)
+        TRANSFORMS.pop(exp.ClusteredColumnConstraint)
+        TRANSFORMS.pop(exp.DateFormatColumnConstraint)
+        TRANSFORMS.pop(exp.EncodeColumnConstraint)
+        TRANSFORMS.pop(exp.ExcludeColumnConstraint)
+        TRANSFORMS.pop(exp.EphemeralColumnConstraint)
+        TRANSFORMS.pop(exp.UppercaseColumnConstraint)
+        TRANSFORMS.pop(exp.PathColumnConstraint)
+        TRANSFORMS.pop(exp.ProjectionPolicyColumnConstraint)
+        TRANSFORMS.pop(exp.InlineLengthColumnConstraint)
+        TRANSFORMS.pop(exp.NonClusteredColumnConstraint)
+        TRANSFORMS.pop(exp.NotForReplicationColumnConstraint)
+        TRANSFORMS.pop(exp.OnUpdateColumnConstraint)
+        TRANSFORMS.pop(exp.TitleColumnConstraint)
 
         # https://docs.singlestore.com/cloud/reference/sql-reference/restricted-keywords/list-of-restricted-keywords/
         RESERVED_KEYWORDS = {
@@ -2264,3 +2278,87 @@ class SingleStore(Dialect):
         def alterset_sql(self, expression: exp.AlterSet) -> str:
             self.unsupported("ALTER SET query is not supported in SingleStore")
             return super().alterset_sql(expression)
+
+        def periodforsystemtimeconstraint_sql(self, expression: exp.PeriodForSystemTimeConstraint) -> str:
+            self.unsupported("PERIOD FOR SYSTEM TIME column constraint is not supported in SingleStore")
+            return ""
+
+        def casespecificcolumnconstraint_sql(self, expression: exp.CaseSpecificColumnConstraint) -> str:
+            self.unsupported("CASE SPECIFIC column constraint is not supported in SingleStore")
+            return ""
+
+        def checkcolumnconstraint_sql(self, expression: exp.CheckColumnConstraint) -> str:
+            self.unsupported("CHECK column constraint is not supported in SingleStore")
+            return ""
+
+        def clusteredcolumnconstraint_sql(self, expression: exp.ClusteredColumnConstraint) -> str:
+            self.unsupported("CLUSTERED column constraint is not supported in SingleStore")
+            return ""
+
+        def compresscolumnconstraint_sql(self, expression: exp.CompressColumnConstraint) -> str:
+            self.unsupported("COMPRESS column constraint is not supported in SingleStore")
+            return ""
+
+        def dateformatcolumnconstraint_sql(self, expression: exp.DateFormatColumnConstraint) -> str:
+            self.unsupported("FORMAT column constraint is not supported in SingleStore")
+            return ""
+
+        def encodecolumnconstraint_sql(self, expression: exp.EncodeColumnConstraint) -> str:
+            self.unsupported("ENCODE column constraint is not supported in SingleStore")
+            return ""
+
+        def excludecolumnconstraint_sql(self, expression: exp.ExcludeColumnConstraint) -> str:
+            self.unsupported("EXCLUDE column constraint is not supported in SingleStore")
+            return ""
+
+        def ephemeralcolumnconstraint_sql(self, expression: exp.EphemeralColumnConstraint) -> str:
+            self.unsupported("EPHEMERAL column constraint is not supported in SingleStore")
+            return ""
+
+        def generatedasidentitycolumnconstraint_sql(self, expression: exp.GeneratedAsIdentityColumnConstraint) -> str:
+            self.unsupported("GENERATED AS column constraint is not supported in SingleStore")
+            return ""
+
+        def generatedasrowcolumnconstraint_sql(self, expression: exp.GeneratedAsRowColumnConstraint) -> str:
+            self.unsupported("GENERATED AS column constraint is not supported in SingleStore")
+            return ""
+
+        def uppercasecolumnconstraint_sql(self, expression: exp.UppercaseColumnConstraint) -> str:
+            self.unsupported("UPPERCASE column constraint is not supported in SingleStore")
+            return ""
+
+        def pathcolumnconstraint_sql(self, expression: exp.PathColumnConstraint) -> str:
+            self.unsupported("PATH column constraint is not supported in SingleStore")
+            return ""
+
+        def projectionpolicycolumnconstraint_sql(self, expression: exp.ProjectionPolicyColumnConstraint) -> str:
+            self.unsupported("PROJECTION POLICY constraint is not supported in SingleStore")
+            return ""
+
+        def inlinelengthcolumnconstraint_sql(self, expression: exp.InlineLengthColumnConstraint) -> str:
+            self.unsupported("INLINE LENGTH column constraint is not supported in SingleStore")
+            return ""
+
+        def nonclusteredcolumnconstraint_sql(self, expression: exp.NonClusteredColumnConstraint) -> str:
+            self.unsupported("NONCLUSTERED column constraint is not supported in SingleStore")
+            return ""
+
+        def notforreplicationcolumnconstraint_sql(self, expression: exp.NotForReplicationColumnConstraint) -> str:
+            self.unsupported("NOT FOR REPLICATION column constraint is not supported in SingleStore")
+            return ""
+
+        def maskingpolicycolumnconstraint_sql(self, expression: exp.MaskingPolicyColumnConstraint) -> str:
+            self.unsupported("MASKING POLICY column constraint is not supported in SingleStore")
+            return ""
+
+        def notnullcolumnconstraint_sql(self, expression: exp.NotNullColumnConstraint) -> str:
+            self.unsupported("NOT NULL column constraint is not supported in SingleStore")
+            return ""
+
+        def onupdatecolumnconstraint_sql(self, expression: exp.OnUpdateColumnConstraint) -> str:
+            self.unsupported("ON UPDATE column constraint is not supported in SingleStore")
+            return ""
+
+        def titlecolumnconstraint_sql(self, expression: exp.TitleColumnConstraint) -> str:
+            self.unsupported("TITLE column constraint is not supported in SingleStore")
+            return ""
