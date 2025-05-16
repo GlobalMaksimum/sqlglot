@@ -226,6 +226,7 @@ class SingleStore(Dialect):
         TRANSFORMS.pop(exp.JSONPathWildcard)
         TRANSFORMS.pop(exp.ToMap)
         TRANSFORMS.pop(exp.VarMap)
+        TRANSFORMS.pop(exp.SwapTable)
 
         # https://docs.singlestore.com/cloud/reference/sql-reference/restricted-keywords/list-of-restricted-keywords/
         RESERVED_KEYWORDS = {
@@ -2174,3 +2175,92 @@ class SingleStore(Dialect):
                 kind = f"TABLE {kind}"
 
             return f"{variable} {kind}{default}"
+
+        def userdefinedfunction_sql(self, expression: exp.UserDefinedFunction) -> str:
+            this = self.sql(expression, "this")
+            expressions = self.no_identify(self.expressions, expression)
+            expressions = self.wrap(expressions)
+            return f"{this}{expressions}"
+
+        def recursivewithsearch_sql(self, expression: exp.RecursiveWithSearch) -> str:
+            self.unsupported("RecursiveWithSearch expression is not supported in SingleStore")
+            return ""
+
+        def projectiondef_sql(self, expression: exp.ProjectionDef) -> str:
+            self.unsupported("PROJECTION definition is not supported in SingleStore")
+            return ""
+
+        @unsupported_args("exists")
+        def columndef_sql(self, expression: exp.ColumnDef, sep: str = " ") -> str:
+            return super().columndef_sql(expression, sep)
+
+        @unsupported_args("drop", "comment", "allow_null", "visible", "using")
+        def altercolumn_sql(self, expression: exp.AlterColumn) -> str:
+            dtype = self.sql(expression, "dtype")
+            if not dtype:
+                return super().altercolumn_sql(expression)
+
+            collate = self.sql(expression, "collate")
+            collate = f" COLLATE {collate}" if collate else ""
+            this = self.sql(expression, "this")
+
+            return f"MODIFY COLUMN {this} {dtype}{collate}"
+
+        def alterindex_sql(self, expression: exp.AlterIndex) -> str:
+            self.unsupported("INVISIBLE INDEXES are not supported in SingleStore")
+            return super().alterindex_sql(expression)
+
+        def alterdiststyle_sql(self, expression: exp.AlterDistStyle) -> str:
+            self.unsupported("ALTER DYSTSTILE is not supported in SingleStore")
+            return super().alterdiststyle_sql(expression)
+
+        def altersortkey_sql(self, expression: exp.AlterSortKey) -> str:
+            self.unsupported("ALTER SORTKEY is not supported in SingleStore")
+            return super().altersortkey_sql(expression)
+
+        @unsupported_args("exists")
+        def renamecolumn_sql(self, expression: exp.RenameColumn) -> str:
+            old_column = self.sql(expression, "this")
+            new_column = self.sql(expression, "to")
+            return f"CHANGE {old_column} {new_column}"
+
+        def swaptable_sql(self, expression: exp.SwapTable) -> str:
+            self.unsupported("ALTER TABLE SWAP is not supported in SingleStore")
+            return f"SWAP WITH {self.sql(expression, 'this')}"
+
+        def comment_sql(self, expression: exp.Comment) -> str:
+            self.unsupported("COMMENT query is not supported in SingleStore")
+            return super().comment_sql(expression)
+
+        def comprehension_sql(self, expression: exp.Comprehension) -> str:
+            self.unsupported("Comprehension is not supported in SingleStore")
+            return super().comprehension_sql(expression)
+
+        def mergetreettlaction_sql(self, expression: exp.MergeTreeTTLAction) -> str:
+            self.unsupported("TTLs are not supported in SingleStore")
+            return super().mergetreettlaction_sql(expression)
+
+        def mergetreettl_sql(self, expression: exp.MergeTreeTTL) -> str:
+            self.unsupported("TTLs are not supported in SingleStore")
+            return super().mergetreettl_sql(expression)
+
+        @unsupported_args("parser", "visible", "engine_attr", "secondary_engine_attr")
+        def indexconstraintoption_sql(self, expression: exp.IndexConstraintOption) -> str:
+            key_block_size = self.sql(expression, "key_block_size")
+            if key_block_size:
+                return f"KEY_BLOCK_SIZE = {key_block_size}"
+
+            using = self.sql(expression, "using")
+            if using:
+                return f"USING {using}"
+
+            comment = self.sql(expression, "comment")
+            if comment:
+                return f"COMMENT {comment}"
+
+            self.unsupported("Unsupported index constraint option.")
+            return ""
+
+        def alterset_sql(self, expression: exp.AlterSet) -> str:
+            self.unsupported("ALTER SET query is not supported in SingleStore")
+            return super().alterset_sql(expression)
