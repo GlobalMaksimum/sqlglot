@@ -2351,10 +2351,6 @@ class SingleStore(Dialect):
             self.unsupported("MASKING POLICY column constraint is not supported in SingleStore")
             return ""
 
-        def notnullcolumnconstraint_sql(self, expression: exp.NotNullColumnConstraint) -> str:
-            self.unsupported("NOT NULL column constraint is not supported in SingleStore")
-            return ""
-
         def onupdatecolumnconstraint_sql(self, expression: exp.OnUpdateColumnConstraint) -> str:
             self.unsupported("ON UPDATE column constraint is not supported in SingleStore")
             return ""
@@ -2362,3 +2358,22 @@ class SingleStore(Dialect):
         def titlecolumnconstraint_sql(self, expression: exp.TitleColumnConstraint) -> str:
             self.unsupported("TITLE column constraint is not supported in SingleStore")
             return ""
+
+        def transformcolumnconstraint_sql(self, expression: exp.TransformColumnConstraint) -> str:
+            self.unsupported("TRANSFORM column constraint is not supported in SingleStore")
+            return ""
+
+        def computedcolumnconstraint_sql(self, expression: exp.ComputedColumnConstraint) -> str:
+            this = self.sql(expression, "this")
+            not_null = ""
+            if expression.args.get("not_null"):
+                not_null = " NOT NULL"
+            return f"AS {this} PERSISTED AUTO{not_null}"
+
+        @unsupported_args("desc", "options")
+        def primarykeycolumnconstraint_sql(self, expression: exp.PrimaryKeyColumnConstraint) -> str:
+            return f"PRIMARY KEY"
+
+        @unsupported_args("this", "nulls_sql", "on_conflict", "index_type", "options")
+        def uniquecolumnconstraint_sql(self, expression: exp.UniqueColumnConstraint) -> str:
+            return f"UNIQUE"
