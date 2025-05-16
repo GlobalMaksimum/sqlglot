@@ -22,7 +22,7 @@ class TestSingleStore(Validator):
             cur.execute("DROP DATABASE IF EXISTS db")
             cur.execute("CREATE DATABASE db")
             cur.execute("USE db")
-            cur.execute("""CREATE TABLE users (
+            cur.execute("""CREATE ROWSTORE TABLE users (
     id INT PRIMARY KEY,
     name VARCHAR(100),
     email VARCHAR(100),
@@ -36,7 +36,8 @@ class TestSingleStore(Validator):
     user_id INT,
     amount DECIMAL(10, 2),
     status VARCHAR(20),
-    created_at TIMESTAMP SERIES TIMESTAMP
+    created_at TIMESTAMP SERIES TIMESTAMP,
+    KEY(user_id)
 );
 """)
             cur.execute("""CREATE TABLE products (
@@ -1820,3 +1821,113 @@ class TestSingleStore(Validator):
             sql="SELECT $a$this is a heredoc string$a$",
             expected_sql="SELECT 'this is a heredoc string'",
             from_dialect="postgres")
+        self.validate_generation(
+            sql="CREATE FUNCTION db.some_func() RETURNS INT AS BEGIN END",
+            from_dialect="tsql",
+            exp_type=exp.UserDefinedFunction,
+            run=False
+        )
+        self.validate_generation(
+            sql="WITH RECURSIVE emp(id, manager) AS ( SELECT 1, NULL UNION ALL SELECT 2, 1 ) SEARCH DEPTH FIRST BY id SET ord SELECT * FROM emp",
+            expected_sql="WITH RECURSIVE emp AS (SELECT 1, NULL UNION ALL SELECT 2, 1) SELECT * FROM emp",
+            error_message="RecursiveWithSearch expression is not supported in SingleStore",
+            exp_type=exp.RecursiveWithSearch)
+        self.validate_generation(
+            sql="WITH cte AS (SELECT * FROM users) SELECT * FROM cte",
+            exp_type=exp.With)
+        self.validate_generation(
+            sql="SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY age) FROM users",
+            exp_type=exp.WithinGroup)
+        self.validate_generation(
+            sql="CREATE TABLE orders ( order_date DATE, PROJECTION total_by_customer ( SELECT order_date ) )",
+            expected_sql="CREATE TABLE orders (order_date DATE, )",
+            error_message="PROJECTION definition is not supported in SingleStore",
+            exp_type=exp.ProjectionDef,
+            from_dialect="clickhouse",
+            run=False)
+        self.validate_generation(
+            sql="SELECT * FROM users AS u(id, name)",
+            expected_sql="SELECT * FROM users AS u",
+            error_message="Named columns are not supported in table alias.",
+            exp_type=exp.TableAlias)
+        self.validate_generation(
+            sql="ALTER TABLE users ADD COLUMN new_name TEXT AFTER id",
+            exp_type=exp.ColumnPosition)
+        self.validate_generation(
+            sql="CREATE TABLE t (id INT NOT NULL DEFAULT 10)",
+            exp_type=exp.ColumnDef)
+        self.validate_generation(
+            sql="ALTER TABLE users ALTER COLUMN name TYPE TEXT COLLATE 'binary'",
+            expected_sql="ALTER TABLE users MODIFY COLUMN name TEXT COLLATE 'binary'",
+            exp_type=exp.AlterColumn)
+        self.validate_generation(
+            sql="ALTER TABLE users ALTER INDEX idx_name VISIBLE",
+            error_message="INVISIBLE INDEXES are not supported in SingleStore",
+            exp_type=exp.AlterIndex,
+            run=False
+        )
+        self.validate_generation(
+            sql="ALTER TABLE t ALTER DISTSTYLE ALL",
+            error_message="ALTER DYSTSTILE is not supported in SingleStore",
+            exp_type=exp.AlterDistStyle,
+            run=False
+        )
+        self.validate_generation(
+            sql="ALTER TABLE t ALTER SORTKEY (id)",
+            error_message="ALTER SORTKEY is not supported in SingleStore",
+            exp_type=exp.AlterSortKey,
+            run=False
+        )
+        self.validate_generation(
+            sql="ALTER TABLE orders RENAME COLUMN created_at TO created_at",
+            expected_sql="ALTER TABLE orders CHANGE created_at created_at",
+            exp_type=exp.RenameColumn)
+        self.validate_generation(
+            sql="ALTER TABLE t RENAME TO t_new",
+            exp_type=exp.AlterRename)
+        self.validate_generation(
+            sql="ALTER TABLE t SWAP WITH t_backup",
+            error_message="ALTER TABLE SWAP is not supported in SingleStore",
+            exp_type=exp.SwapTable,
+            run=False
+        )
+        self.validate_generation(
+            sql="COMMENT ON TABLE users IS 'user data'",
+            error_message="COMMENT query is not supported in SingleStore",
+            exp_type=exp.Comment,
+            run=False
+        )
+        self.validate_generation(
+            sql="x FOR x IN numbers",
+            error_message="Comprehension is not supported in SingleStore",
+            exp_type=exp.Comprehension,
+            run = False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE tab ( d DateTime, a Int ) ENGINE = MergeTree PARTITION BY toYYYYMM(d) ORDER BY d TTL d + INTERVAL 1 MONTH DELETE, d + INTERVAL 1 WEEK TO VOLUME 'aaa', d + INTERVAL 2 WEEK TO DISK 'bbb'",
+            expected_sql="CREATE TABLE tab (d DATETIME, a INT) ENGINE=MergeTree ORDER BY d TTL d + INTERVAL '1' MONTH DELETE, d + INTERVAL '1' WEEK TO VOLUME + INTERVAL 'aaa', d + INTERVAL '2' WEEK TO DISK + INTERVAL 'bbb'  (PARTITIONED_BY=TOYYYYMM(d))",
+            error_message="TTLs are not supported in SingleStore",
+            exp_type=exp.MergeTreeTTLAction,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE tab ( d DateTime, a Int ) ENGINE = MergeTree PARTITION BY toYYYYMM(d) ORDER BY d TTL d + INTERVAL 1 MONTH DELETE, d + INTERVAL 1 WEEK TO VOLUME 'aaa', d + INTERVAL 2 WEEK TO DISK 'bbb'",
+            expected_sql="CREATE TABLE tab (d DATETIME, a INT) ENGINE=MergeTree ORDER BY d TTL d + INTERVAL '1' MONTH DELETE, d + INTERVAL '1' WEEK TO VOLUME + INTERVAL 'aaa', d + INTERVAL '2' WEEK TO DISK + INTERVAL 'bbb'  (PARTITIONED_BY=TOYYYYMM(d))",
+            error_message="TTLs are not supported in SingleStore",
+            exp_type=exp.MergeTreeTTL,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE IndexConstraintOption (a INT, INDEX (a) KEY_BLOCK_SIZE = 10)",
+            exp_type=exp.IndexConstraintOption)
+        self.validate_generation(
+            sql="CREATE TABLE ColumnConstraint (id INT AUTO_INCREMENT PRIMARY KEY)",
+            exp_type=exp.ColumnConstraint)
+        self.validate_generation(
+            sql="ALTER TABLE orders SET DATA_RETENTION_TIME_IN_DAYS = 1",
+            expected_sql="ALTER TABLE orders SET  (DATA_RETENTION_TIME_IN_DAYS=1)",
+            error_message="ALTER SET query is not supported in SingleStore",
+            exp_type=exp.AlterSet,
+            from_dialect="snowflake",
+            run=False
+        )
