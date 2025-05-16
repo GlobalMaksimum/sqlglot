@@ -1933,13 +1933,13 @@ class TestSingleStore(Validator):
         )
 
     def test_column_constraints(self):
-        # self.validate_generation(
-        #     sql="CREATE TABLE PeriodForSystemTimeConstraint (valid_from DATE PERIOD FOR SYSTEM_TIME (ValidFrom, ValidTo))",
-        #     expected_sql="CREATE TABLE PeriodForSystemTimeConstraint (valid_from DATE)",
-        #     error_message="PERIOD FOR SYSTEM TIME column constraint is not supported in SingleStore",
-        #     exp_type=exp.PeriodForSystemTimeConstraint,
-        # )
-
+        self.validate_generation(
+            sql="CREATE TABLE PeriodForSystemTimeConstraint (valid_from DATE PERIOD FOR SYSTEM_TIME (ValidFrom, ValidTo))",
+            expected_sql="CREATE TABLE PeriodForSystemTimeConstraint (valid_from DATE)",
+            from_dialect="tsql",
+            error_message="PERIOD FOR SYSTEM TIME column constraint is not supported in SingleStore",
+            exp_type=exp.PeriodForSystemTimeConstraint,
+        )
         self.validate_generation(
             sql="CREATE TABLE CaseSpecificColumnConstraint (name VARCHAR(100) CASESPECIFIC)",
             expected_sql="CREATE TABLE CaseSpecificColumnConstraint (name VARCHAR(100))",
@@ -1952,142 +1952,130 @@ class TestSingleStore(Validator):
             error_message="CHECK column constraint is not supported in SingleStore",
             exp_type=exp.CheckColumnConstraint,
         )
-
         self.validate_generation(
-            sql="CREATE TABLE ClusteredColumnConstraint (id INT PRIMARY KEY CLUSTERED)",
+            sql="CREATE TABLE ClusteredColumnConstraint (id INT PRIMARY KEY CLUSTERED (a, b))",
             expected_sql="CREATE TABLE ClusteredColumnConstraint (id INT PRIMARY KEY)",
             error_message="CLUSTERED column constraint is not supported in SingleStore",
             exp_type=exp.ClusteredColumnConstraint,
         )
-
         self.validate_generation(
-            sql="CREATE TABLE CompressColumnConstraint (data BLOB COMPRESS LZ4)",
-            expected_sql="CREATE TABLE CompressColumnConstraint (data BLOB)",
+            sql="CREATE TABLE CompressColumnConstraint (data VARBINARY(100) COMPRESS LZ4)",
+            expected_sql="CREATE TABLE CompressColumnConstraint (data VARBINARY(100))",
             error_message="COMPRESS column constraint is not supported in SingleStore",
             exp_type=exp.CompressColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE DateFormatColumnConstraint (dob DATE FORMAT 'YYYY-MM-DD')",
             expected_sql="CREATE TABLE DateFormatColumnConstraint (dob DATE)",
             error_message="FORMAT column constraint is not supported in SingleStore",
             exp_type=exp.DateFormatColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE EncodeColumnConstraint (data TEXT ENCODE ZSTD)",
             expected_sql="CREATE TABLE EncodeColumnConstraint (data TEXT)",
             error_message="ENCODE column constraint is not supported in SingleStore",
             exp_type=exp.EncodeColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE ExcludeColumnConstraint (ssn CHAR(11) EXCLUDE)",
             expected_sql="CREATE TABLE ExcludeColumnConstraint (ssn CHAR(11))",
             error_message="EXCLUDE column constraint is not supported in SingleStore",
             exp_type=exp.ExcludeColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE EphemeralColumnConstraint (temp_data VARCHAR(100) EPHEMERAL)",
             expected_sql="CREATE TABLE EphemeralColumnConstraint (temp_data VARCHAR(100))",
             error_message="EPHEMERAL column constraint is not supported in SingleStore",
             exp_type=exp.EphemeralColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE GeneratedAsIdentityColumnConstraint (id INT GENERATED ALWAYS AS IDENTITY)",
             expected_sql="CREATE TABLE GeneratedAsIdentityColumnConstraint (id INT)",
             error_message="GENERATED AS column constraint is not supported in SingleStore",
             exp_type=exp.GeneratedAsIdentityColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE GeneratedAsRowColumnConstraint (rownum INT GENERATED ALWAYS AS ROW)",
             expected_sql="CREATE TABLE GeneratedAsRowColumnConstraint (rownum INT)",
             error_message="GENERATED AS column constraint is not supported in SingleStore",
             exp_type=exp.GeneratedAsRowColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE UppercaseColumnConstraint (code VARCHAR(10) UPPERCASE)",
             expected_sql="CREATE TABLE UppercaseColumnConstraint (code VARCHAR(10))",
             error_message="UPPERCASE column constraint is not supported in SingleStore",
             exp_type=exp.UppercaseColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE PathColumnConstraint (data JSON PATH '$.user.id')",
             expected_sql="CREATE TABLE PathColumnConstraint (data JSON)",
             error_message="PATH column constraint is not supported in SingleStore",
             exp_type=exp.PathColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE ProjectionPolicyColumnConstraint (col VARCHAR(100) PROJECTION POLICY p)",
             expected_sql="CREATE TABLE ProjectionPolicyColumnConstraint (col VARCHAR(100))",
+            from_dialect="snowflake",
             error_message="PROJECTION POLICY constraint is not supported in SingleStore",
             exp_type=exp.ProjectionPolicyColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE InlineLengthColumnConstraint (data VARCHAR(100) INLINE LENGTH 32)",
             expected_sql="CREATE TABLE InlineLengthColumnConstraint (data VARCHAR(100))",
             error_message="INLINE LENGTH column constraint is not supported in SingleStore",
             exp_type=exp.InlineLengthColumnConstraint,
         )
-
         self.validate_generation(
-            sql="CREATE TABLE NonClusteredColumnConstraint (id INT PRIMARY KEY NONCLUSTERED)",
+            sql="CREATE TABLE NonClusteredColumnConstraint (id INT PRIMARY KEY NONCLUSTERED (a, b))",
             expected_sql="CREATE TABLE NonClusteredColumnConstraint (id INT PRIMARY KEY)",
             error_message="NONCLUSTERED column constraint is not supported in SingleStore",
             exp_type=exp.NonClusteredColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE NotForReplicationColumnConstraint (col INT NOT FOR REPLICATION)",
             expected_sql="CREATE TABLE NotForReplicationColumnConstraint (col INT)",
             error_message="NOT FOR REPLICATION column constraint is not supported in SingleStore",
             exp_type=exp.NotForReplicationColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE MaskingPolicyColumnConstraint (ssn VARCHAR(11) MASKING POLICY mask_ssn)",
             expected_sql="CREATE TABLE MaskingPolicyColumnConstraint (ssn VARCHAR(11))",
             error_message="MASKING POLICY column constraint is not supported in SingleStore",
+            from_dialect="snowflake",
             exp_type=exp.MaskingPolicyColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE OnUpdateColumnConstraint (updated_at TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)",
             expected_sql="CREATE TABLE OnUpdateColumnConstraint (updated_at TIMESTAMP)",
             error_message="ON UPDATE column constraint is not supported in SingleStore",
             exp_type=exp.OnUpdateColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE TitleColumnConstraint (title VARCHAR(100) TITLE 'Book Title')",
             expected_sql="CREATE TABLE TitleColumnConstraint (title VARCHAR(100))",
             error_message="TITLE column constraint is not supported in SingleStore",
             exp_type=exp.TitleColumnConstraint,
         )
-
-        exit(0)
         self.validate_generation(
             sql="CREATE TABLE NotNullColumnConstraint (name VARCHAR(100) NOT NULL)",
-            expected_sql="CREATE TABLE NotNullColumnConstraint (name VARCHAR(100))",
+            expected_sql="CREATE TABLE NotNullColumnConstraint (name VARCHAR(100) NOT NULL)",
             exp_type=exp.NotNullColumnConstraint,
         )
-
         self.validate_generation(
-            sql="CREATE TABLE AutoIncrementColumnConstraint (id INT AUTO_INCREMENT KEY)",
+            sql="CREATE TABLE TransformColumnConstraint (bar INT AS (foo))",
+            expected_sql="CREATE TABLE TransformColumnConstraint (bar INT)",
+            error_message="TRANSFORM column constraint is not supported in SingleStore",
+            from_dialect="snowflake",
+            exp_type=exp.TransformColumnConstraint,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE AutoIncrementColumnConstraint (id INT AUTO_INCREMENT, INDEX (id))",
             exp_type=exp.AutoIncrementColumnConstraint,
         )
         self.validate_generation(
             sql="CREATE TABLE CharacterSetColumnConstraint (name VARCHAR(100) CHARACTER SET utf8)",
             exp_type=exp.CharacterSetColumnConstraint,
         )
-
         self.validate_generation(
             sql="CREATE TABLE CollateColumnConstraint (name VARCHAR(100) COLLATE utf8_general_ci)",
             exp_type=exp.CollateColumnConstraint,
@@ -2100,28 +2088,20 @@ class TestSingleStore(Validator):
             sql="CREATE TABLE DefaultColumnConstraint (status VARCHAR(10) DEFAULT 'active')",
             exp_type=exp.DefaultColumnConstraint,
         )
-        # TODO: fix
         self.validate_generation(
-            sql="CREATE TABLE IndexColumnConstraint (name VARCHAR(100) INDEX)",
+            sql="CREATE TABLE IndexColumnConstraint (name VARCHAR(100), INDEX a USING BTREE (name) KEY_BLOCK_SIZE = 10)",
             exp_type=exp.IndexColumnConstraint,
         )
-        # TODO
         self.validate_generation(
-            sql="CREATE TABLE TransformColumnConstraint (text VARCHAR(100) TRANSFORM json_transform)",
-            exp_type=exp.TransformColumnConstraint,
+            sql="CREATE TABLE ComputedColumnConstraint (points INT, score AS (points * 2) PERSISTED NOT NULL)",
+            expected_sql="CREATE TABLE ComputedColumnConstraint (points INT, score AS (points * 2) PERSISTED AUTO NOT NULL)",
+            exp_type=exp.ComputedColumnConstraint,
         )
         self.validate_generation(
             sql="CREATE TABLE PrimaryKeyColumnConstraint (id INT PRIMARY KEY)",
             exp_type=exp.PrimaryKeyColumnConstraint,
         )
-        # TODO: FIX
         self.validate_generation(
-            sql="CREATE TABLE UniqueColumnConstraint (email VARCHAR(100) UNIQUE)",
+            sql="CREATE TABLE UniqueColumnConstraint (email VARCHAR(100) UNIQUE, SHARD INDEX (email))",
             exp_type=exp.UniqueColumnConstraint,
-        )
-
-
-        self.validate_generation(
-            sql="CREATE TABLE ComputedColumnConstraint (score AS (points * 2) INT)",
-            exp_type=exp.ComputedColumnConstraint,
         )
