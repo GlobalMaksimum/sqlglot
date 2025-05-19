@@ -1901,7 +1901,7 @@ class TestSingleStore(Validator):
             sql="x FOR x IN numbers",
             error_message="Comprehension is not supported in SingleStore",
             exp_type=exp.Comprehension,
-            run = False
+            run=False
         )
         self.validate_generation(
             sql="CREATE TABLE tab ( d DateTime, a Int ) ENGINE = MergeTree PARTITION BY toYYYYMM(d) ORDER BY d TTL d + INTERVAL 1 MONTH DELETE, d + INTERVAL 1 WEEK TO VOLUME 'aaa', d + INTERVAL 2 WEEK TO DISK 'bbb'",
@@ -1931,6 +1931,208 @@ class TestSingleStore(Validator):
             from_dialect="snowflake",
             run=False
         )
+        self.validate_generation(
+            sql="CREATE TABLE ConstraintTable (a INT, CONSTRAINT id PRIMARY KEY (a))",
+            exp_type=exp.Constraint)
+        self.validate_generation(
+            sql="EXPORT DATA OPTIONS( uri='gs://bucket/folder/*.csv', format='CSV', overwrite=true, header=true, field_delimiter=';') AS SELECT field1, field2 FROM mydataset.table1 ORDER BY field1 LIMIT 10",
+            expected_sql="EXPORT DATA  (uri='gs://bucket/folder/*.csv', FORMAT='CSV', overwrite=TRUE, header=TRUE, field_delimiter=';') AS SELECT field1, field2 FROM mydataset.table1 ORDER BY field1 LIMIT 10",
+            exp_type=exp.Export,
+            from_dialect="bigquery",
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT COUNT(age) FILTER (WHERE age > 18) AS adult_count FROM users",
+            expected_sql="SELECT COUNT(CASE WHEN age > 18 THEN age END) AS adult_count FROM users",
+            exp_type=exp.Filter)
+        self.validate_generation(
+            sql="SELECT * FROM t1 CHANGES (INFORMATION => DEFAULT) AT (TIMESTAMP => @ts1)",
+            from_dialect="snowflake",
+            error_message="CHANGES clause is not supported in SingleStore",
+            exp_type=exp.Changes,
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT employee_id, manager_id FROM employees START WITH manager_id IS NULL CONNECT BY NOCYCLE PRIOR employee_id = manager_id",
+            error_message="CONNECT BY clause is not supported in SingleStore",
+            exp_type=exp.Connect,
+            run=False
+        )
+        self.validate_generation(
+            sql="COPY INTO users FROM 'file.csv' WITH (FORMAT 'CSV')",
+            error_message="COPY query is not supported in SingleStore",
+            exp_type=exp.CopyParameter,
+            run=False
+        )
+        self.validate_generation(
+            sql="COPY INTO mytable FROM 's3://mybucket/data/files' CREDENTIALS = (AWS_KEY_ID='$AWS_ACCESS_KEY_ID' AWS_SECRET_KEY='$AWS_SECRET_ACCESS_KEY') ENCRYPTION = (MASTER_KEY='eSx...') WITH (FILE_FORMAT = (FORMAT_NAME=my_csv_format))",
+            error_message="COPY query is not supported in SingleStore",
+            from_dialect="snowflake",
+            exp_type=exp.Credentials,
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT employee_id, manager_id FROM employees START WITH manager_id IS NULL CONNECT BY NOCYCLE PRIOR employee_id = manager_id",
+            error_message="CONNECT BY clause is not supported in SingleStore",
+            exp_type=exp.Prior,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT OVERWRITE LOCAL DIRECTORY '/tmp/destination' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM test_table",
+            error_message="INSERT OVERWRITE DIRECTORY query is not supported in SingleStore",
+            exp_type=exp.Directory,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE orders1 (order_id INT PRIMARY KEY, customer_id INT, product_id INT, order_date DATE, FOREIGN KEY (customer_id) REFERENCES customers (customer_id), FOREIGN KEY (product_id) REFERENCES products (product_id))",
+            error_message="Foreign keys are not supported in SingleStore",
+            exp_type=exp.ForeignKey,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE ColumnPrefix (a TEXT, PRIMARY KEY (a(3)))",
+            error_message="Using column prefix for PK is not supported in SingleStore",
+            exp_type=exp.ColumnPrefix)
+        self.validate_generation(
+            sql="CREATE TABLE PrimaryKey (a INT, PRIMARY KEY (a))",
+            exp_type=exp.PrimaryKey)
+        self.validate_generation(
+            sql="SELECT * INTO users_new FROM users WHERE age >= 19",
+            expected_sql="CREATE TABLE users_new AS SELECT * FROM users WHERE age >= 19",
+            exp_type=exp.Into,
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users",
+            exp_type=exp.From)
+        self.validate_generation(
+            sql="SELECT COUNT(*) FROM users GROUP BY age HAVING COUNT(*) > 1",
+            exp_type=exp.Having)
+        self.validate_generation(
+            sql="SELECT /*+ NO_INDEX(users) */ * FROM users",
+            expected_sql="SELECT * FROM users",
+            error_message="Hints are not supported",
+            exp_type=exp.Hint)
+        self.validate_generation(
+            sql="SELECT /*+ MERGE(t1) */ * FROM t1 INNER JOIN t2 ON t1.key = t2.key",
+            expected_sql="SELECT * FROM t1 INNER JOIN t2 ON t1.key = t2.key",
+            error_message="Hints are not supported",
+            from_dialect="spark2",
+            exp_type=exp.JoinHint,
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT id FROM users",
+            exp_type=exp.Identifier)
+        self.validate_generation(
+            sql="CREATE INDEX test_index ON users (id varchar_pattern_ops)",
+            expected_sql="CREATE INDEX test_index ON users(id)",
+            error_message="Operator classes are not supported in SingleStore",
+            exp_type=exp.Opclass)
+        self.validate_generation(
+            sql="CREATE INDEX idx_name ON users(name)",
+            exp_type=exp.Index
+        )
+        self.validate_generation(
+            sql="CREATE INDEX idx_fillfactor ON users (name WITH varchar_pattern_ops)",
+            expected_sql="CREATE INDEX idx_fillfactor ON users(name)",
+            error_message="Indexes with operator are not supported in SingleStore",
+            exp_type=exp.WithOperator)
+        self.validate_generation(
+            sql="CREATE INDEX test_index1 ON users USING BTREE (id)",
+            expected_sql="CREATE INDEX test_index1 ON users(id) USING BTREE",
+            exp_type=exp.IndexParameters)
+        self.validate_generation(
+            sql="INSERT ALL WHEN dept = 'SALES' THEN INTO sales_employees (empId, name) VALUES (empId, name) WHEN dept = 'HR' THEN INTO hr_employees (empId, name) VALUES (empId, name) ELSE INTO other_employees (empId, name) VALUES (empId, name) SELECT empId, name, dept FROM EMPLOYEE;",
+            expected_sql="INSERT ALL WHEN dept = 'SALES' THEN INTO sales_employees (empId, name) VALUES (empId, name) WHEN dept = 'HR' THEN INTO hr_employees (empId, name) VALUES (empId, name) ELSE INTO other_employees (empId, name) VALUES (empId, name) SELECT empId, name, dept FROM EMPLOYEE",
+            error_message="Conditional insert is not supported in SingleStore",
+            exp_type=exp.ConditionalInsert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT ALL INTO MultitableInserts (empno, ename) VALUES (1001, 'John') INTO MultitableInserts (empno, ename) VALUES (1002, 'Jane') SELECT * FROM dual",
+            error_message="Multitable insert is not supported in SingleStore",
+            exp_type=exp.MultitableInserts,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT INTO users (id, name) VALUES (1, 'Alice') ON DUPLICATE KEY UPDATE name = 'Alice'",
+            exp_type=exp.OnConflict)
+
+        self.validate_generation(
+            sql="SELECT JSON_VALUE(JSON '{}', 'a' NULL ON ERROR)",
+            expected_sql="SELECT JSON_VALUE(PARSE_JSON('{}'), 'a')",
+            error_message="Setting on empty or on error behaviour for JSON functions is not supported in SingleStore",
+            exp_type=exp.OnCondition,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT INTO users VALUES (2, 'Alice', '', 1, NOW(), 1) RETURNING id",
+            expected_sql="INSERT INTO users VALUES (2, 'Alice', '', 1, NOW(), 1)",
+            error_message="RETURNING is not supported in SingleStore",
+            exp_type=exp.Returning,
+        )
+        self.validate_generation(
+            sql="SELECT _utf8'abc'",
+            expected_sql="SELECT 'abc'",
+            error_message="Character set introducers are not supported in SingleStore",
+            exp_type=exp.Introducer)
+
+        self.validate_generation(
+            sql="SELECT N'national string'",
+            expected_sql="SELECT 'national string'",
+            exp_type=exp.National)
+        self.validate_generation(
+            sql="LOAD DATA LOCAL INPATH 'data.csv' OVERWRITE INTO TABLE LoadData INPUTFORMAT 'JSON'",
+            expected_sql="LOAD DATA LOCAL INFILE 'data.csv' REPLACE INTO TABLE LoadData FORMAT JSON",
+            exp_type=exp.LoadData,
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users FETCH FIRST 10 ROWS ONLY",
+            expected_sql="SELECT * FROM users LIMIT 10",
+            exp_type=exp.Fetch
+        )
+        self.validate_generation(
+            sql="GRANT SELECT ON sales TO fred",
+            from_dialect="redshift",
+            exp_type=exp.Grant,
+            run=False
+        )
+
+    def test_drop_generation(self):
+        with conn.cursor() as cur:
+            cur.execute("DROP DATABASE IF EXISTS dropDB")
+            cur.execute("CREATE DATABASE dropDB")
+            cur.execute("CREATE TABLE dropDB.dropTable(a INT, INDEX a (a))")
+            cur.execute(
+                "CREATE TEMPORARY TABLE dropDB.dropTableTemp(a INT, INDEX a (a))")
+            cur.execute(
+                "CREATE VIEW dropDB.dropView AS SELECT * FROM dropDB.dropTable")
+            cur.execute("USE dropDB")
+
+        self.validate_generation(
+            sql="DROP INDEX a ON dropTable",
+            exp_type=exp.Drop,
+        )
+        self.validate_generation(
+            sql="DROP TABLE IF EXISTS dropTable",
+            exp_type=exp.Drop,
+        )
+        self.validate_generation(
+            sql="DROP TEMPORARY TABLE IF EXISTS dropTableTemp",
+            exp_type=exp.Drop,
+        )
+        self.validate_generation(
+            sql="DROP VIEW IF EXISTS dropView",
+            exp_type=exp.Drop,
+        )
+        self.validate_generation(
+            sql="DROP DATABASE IF EXISTS dropDB",
+            exp_type=exp.Drop,
+        )
+
+        with conn.cursor() as cur:
+            cur.execute("USE db")
 
     def test_column_constraints(self):
         self.validate_generation(
@@ -2104,4 +2306,17 @@ class TestSingleStore(Validator):
         self.validate_generation(
             sql="CREATE TABLE UniqueColumnConstraint (email VARCHAR(100) UNIQUE, SHARD INDEX (email))",
             exp_type=exp.UniqueColumnConstraint,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE Tags (id INT WITH TAG (a='1'))",
+            expected_sql="CREATE TABLE Tags (id INT)",
+            error_message="TAG column constraint is not supported in SingleStore",
+            from_dialect="snowflake",
+            exp_type=exp.Tags,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE WatermarkColumnConstraint (ts TIMESTAMP WATERMARK FOR ts AS ts)",
+            expected_sql="CREATE TABLE WatermarkColumnConstraint (ts TIMESTAMP)",
+            error_message="WATERMARK column constraint is not supported in SingleStore",
+            exp_type=exp.WatermarkColumnConstraint
         )

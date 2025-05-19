@@ -8,6 +8,7 @@ import typing as t
 import re
 from sqlglot import exp
 from sqlglot.generator import ESCAPED_UNICODE_RE, unsupported_args
+from sqlglot.helper import csv
 
 
 class SingleStore(Dialect):
@@ -105,6 +106,8 @@ class SingleStore(Dialect):
         SUPPORTS_CONVERT_TIMEZONE = True
         SUPPORTS_UNIX_SECONDS = True
         JSON_KEY_VALUE_PAIR_SEP = ","
+        AGGREGATE_FILTER_SUPPORTED = False
+        QUERY_HINTS = False
 
         TRANSFORMS = {
             **generator.Generator.TRANSFORMS,
@@ -241,6 +244,8 @@ class SingleStore(Dialect):
         TRANSFORMS.pop(exp.NotForReplicationColumnConstraint)
         TRANSFORMS.pop(exp.OnUpdateColumnConstraint)
         TRANSFORMS.pop(exp.TitleColumnConstraint)
+        TRANSFORMS.pop(exp.Tags)
+        TRANSFORMS.pop(exp.WithOperator)
 
         # https://docs.singlestore.com/cloud/reference/sql-reference/restricted-keywords/list-of-restricted-keywords/
         RESERVED_KEYWORDS = {
@@ -2190,22 +2195,27 @@ class SingleStore(Dialect):
 
             return f"{variable} {kind}{default}"
 
-        def userdefinedfunction_sql(self, expression: exp.UserDefinedFunction) -> str:
+        def userdefinedfunction_sql(self,
+            expression: exp.UserDefinedFunction) -> str:
             this = self.sql(expression, "this")
             expressions = self.no_identify(self.expressions, expression)
             expressions = self.wrap(expressions)
             return f"{this}{expressions}"
 
-        def recursivewithsearch_sql(self, expression: exp.RecursiveWithSearch) -> str:
-            self.unsupported("RecursiveWithSearch expression is not supported in SingleStore")
+        def recursivewithsearch_sql(self,
+            expression: exp.RecursiveWithSearch) -> str:
+            self.unsupported(
+                "RecursiveWithSearch expression is not supported in SingleStore")
             return ""
 
         def projectiondef_sql(self, expression: exp.ProjectionDef) -> str:
-            self.unsupported("PROJECTION definition is not supported in SingleStore")
+            self.unsupported(
+                "PROJECTION definition is not supported in SingleStore")
             return ""
 
         @unsupported_args("exists")
-        def columndef_sql(self, expression: exp.ColumnDef, sep: str = " ") -> str:
+        def columndef_sql(self, expression: exp.ColumnDef,
+            sep: str = " ") -> str:
             return super().columndef_sql(expression, sep)
 
         @unsupported_args("drop", "comment", "allow_null", "visible", "using")
@@ -2221,7 +2231,8 @@ class SingleStore(Dialect):
             return f"MODIFY COLUMN {this} {dtype}{collate}"
 
         def alterindex_sql(self, expression: exp.AlterIndex) -> str:
-            self.unsupported("INVISIBLE INDEXES are not supported in SingleStore")
+            self.unsupported(
+                "INVISIBLE INDEXES are not supported in SingleStore")
             return super().alterindex_sql(expression)
 
         def alterdiststyle_sql(self, expression: exp.AlterDistStyle) -> str:
@@ -2250,7 +2261,8 @@ class SingleStore(Dialect):
             self.unsupported("Comprehension is not supported in SingleStore")
             return super().comprehension_sql(expression)
 
-        def mergetreettlaction_sql(self, expression: exp.MergeTreeTTLAction) -> str:
+        def mergetreettlaction_sql(self,
+            expression: exp.MergeTreeTTLAction) -> str:
             self.unsupported("TTLs are not supported in SingleStore")
             return super().mergetreettlaction_sql(expression)
 
@@ -2258,8 +2270,10 @@ class SingleStore(Dialect):
             self.unsupported("TTLs are not supported in SingleStore")
             return super().mergetreettl_sql(expression)
 
-        @unsupported_args("parser", "visible", "engine_attr", "secondary_engine_attr")
-        def indexconstraintoption_sql(self, expression: exp.IndexConstraintOption) -> str:
+        @unsupported_args("parser", "visible", "engine_attr",
+                          "secondary_engine_attr")
+        def indexconstraintoption_sql(self,
+            expression: exp.IndexConstraintOption) -> str:
             key_block_size = self.sql(expression, "key_block_size")
             if key_block_size:
                 return f"KEY_BLOCK_SIZE = {key_block_size}"
@@ -2279,91 +2293,134 @@ class SingleStore(Dialect):
             self.unsupported("ALTER SET query is not supported in SingleStore")
             return super().alterset_sql(expression)
 
-        def periodforsystemtimeconstraint_sql(self, expression: exp.PeriodForSystemTimeConstraint) -> str:
-            self.unsupported("PERIOD FOR SYSTEM TIME column constraint is not supported in SingleStore")
+        def periodforsystemtimeconstraint_sql(self,
+            expression: exp.PeriodForSystemTimeConstraint) -> str:
+            self.unsupported(
+                "PERIOD FOR SYSTEM TIME column constraint is not supported in SingleStore")
             return ""
 
-        def casespecificcolumnconstraint_sql(self, expression: exp.CaseSpecificColumnConstraint) -> str:
-            self.unsupported("CASE SPECIFIC column constraint is not supported in SingleStore")
+        def casespecificcolumnconstraint_sql(self,
+            expression: exp.CaseSpecificColumnConstraint) -> str:
+            self.unsupported(
+                "CASE SPECIFIC column constraint is not supported in SingleStore")
             return ""
 
-        def checkcolumnconstraint_sql(self, expression: exp.CheckColumnConstraint) -> str:
-            self.unsupported("CHECK column constraint is not supported in SingleStore")
+        def checkcolumnconstraint_sql(self,
+            expression: exp.CheckColumnConstraint) -> str:
+            self.unsupported(
+                "CHECK column constraint is not supported in SingleStore")
             return ""
 
-        def clusteredcolumnconstraint_sql(self, expression: exp.ClusteredColumnConstraint) -> str:
-            self.unsupported("CLUSTERED column constraint is not supported in SingleStore")
+        def clusteredcolumnconstraint_sql(self,
+            expression: exp.ClusteredColumnConstraint) -> str:
+            self.unsupported(
+                "CLUSTERED column constraint is not supported in SingleStore")
             return ""
 
-        def compresscolumnconstraint_sql(self, expression: exp.CompressColumnConstraint) -> str:
-            self.unsupported("COMPRESS column constraint is not supported in SingleStore")
+        def compresscolumnconstraint_sql(self,
+            expression: exp.CompressColumnConstraint) -> str:
+            self.unsupported(
+                "COMPRESS column constraint is not supported in SingleStore")
             return ""
 
-        def dateformatcolumnconstraint_sql(self, expression: exp.DateFormatColumnConstraint) -> str:
-            self.unsupported("FORMAT column constraint is not supported in SingleStore")
+        def dateformatcolumnconstraint_sql(self,
+            expression: exp.DateFormatColumnConstraint) -> str:
+            self.unsupported(
+                "FORMAT column constraint is not supported in SingleStore")
             return ""
 
-        def encodecolumnconstraint_sql(self, expression: exp.EncodeColumnConstraint) -> str:
-            self.unsupported("ENCODE column constraint is not supported in SingleStore")
+        def encodecolumnconstraint_sql(self,
+            expression: exp.EncodeColumnConstraint) -> str:
+            self.unsupported(
+                "ENCODE column constraint is not supported in SingleStore")
             return ""
 
-        def excludecolumnconstraint_sql(self, expression: exp.ExcludeColumnConstraint) -> str:
-            self.unsupported("EXCLUDE column constraint is not supported in SingleStore")
+        def excludecolumnconstraint_sql(self,
+            expression: exp.ExcludeColumnConstraint) -> str:
+            self.unsupported(
+                "EXCLUDE column constraint is not supported in SingleStore")
             return ""
 
-        def ephemeralcolumnconstraint_sql(self, expression: exp.EphemeralColumnConstraint) -> str:
-            self.unsupported("EPHEMERAL column constraint is not supported in SingleStore")
+        def ephemeralcolumnconstraint_sql(self,
+            expression: exp.EphemeralColumnConstraint) -> str:
+            self.unsupported(
+                "EPHEMERAL column constraint is not supported in SingleStore")
             return ""
 
-        def generatedasidentitycolumnconstraint_sql(self, expression: exp.GeneratedAsIdentityColumnConstraint) -> str:
-            self.unsupported("GENERATED AS column constraint is not supported in SingleStore")
+        def generatedasidentitycolumnconstraint_sql(self,
+            expression: exp.GeneratedAsIdentityColumnConstraint) -> str:
+            self.unsupported(
+                "GENERATED AS column constraint is not supported in SingleStore")
             return ""
 
-        def generatedasrowcolumnconstraint_sql(self, expression: exp.GeneratedAsRowColumnConstraint) -> str:
-            self.unsupported("GENERATED AS column constraint is not supported in SingleStore")
+        def generatedasrowcolumnconstraint_sql(self,
+            expression: exp.GeneratedAsRowColumnConstraint) -> str:
+            self.unsupported(
+                "GENERATED AS column constraint is not supported in SingleStore")
             return ""
 
-        def uppercasecolumnconstraint_sql(self, expression: exp.UppercaseColumnConstraint) -> str:
-            self.unsupported("UPPERCASE column constraint is not supported in SingleStore")
+        def uppercasecolumnconstraint_sql(self,
+            expression: exp.UppercaseColumnConstraint) -> str:
+            self.unsupported(
+                "UPPERCASE column constraint is not supported in SingleStore")
             return ""
 
-        def pathcolumnconstraint_sql(self, expression: exp.PathColumnConstraint) -> str:
-            self.unsupported("PATH column constraint is not supported in SingleStore")
+        def pathcolumnconstraint_sql(self,
+            expression: exp.PathColumnConstraint) -> str:
+            self.unsupported(
+                "PATH column constraint is not supported in SingleStore")
             return ""
 
-        def projectionpolicycolumnconstraint_sql(self, expression: exp.ProjectionPolicyColumnConstraint) -> str:
-            self.unsupported("PROJECTION POLICY constraint is not supported in SingleStore")
+        def projectionpolicycolumnconstraint_sql(self,
+            expression: exp.ProjectionPolicyColumnConstraint) -> str:
+            self.unsupported(
+                "PROJECTION POLICY constraint is not supported in SingleStore")
             return ""
 
-        def inlinelengthcolumnconstraint_sql(self, expression: exp.InlineLengthColumnConstraint) -> str:
-            self.unsupported("INLINE LENGTH column constraint is not supported in SingleStore")
+        def inlinelengthcolumnconstraint_sql(self,
+            expression: exp.InlineLengthColumnConstraint) -> str:
+            self.unsupported(
+                "INLINE LENGTH column constraint is not supported in SingleStore")
             return ""
 
-        def nonclusteredcolumnconstraint_sql(self, expression: exp.NonClusteredColumnConstraint) -> str:
-            self.unsupported("NONCLUSTERED column constraint is not supported in SingleStore")
+        def nonclusteredcolumnconstraint_sql(self,
+            expression: exp.NonClusteredColumnConstraint) -> str:
+            self.unsupported(
+                "NONCLUSTERED column constraint is not supported in SingleStore")
             return ""
 
-        def notforreplicationcolumnconstraint_sql(self, expression: exp.NotForReplicationColumnConstraint) -> str:
-            self.unsupported("NOT FOR REPLICATION column constraint is not supported in SingleStore")
+        def notforreplicationcolumnconstraint_sql(self,
+            expression: exp.NotForReplicationColumnConstraint) -> str:
+            self.unsupported(
+                "NOT FOR REPLICATION column constraint is not supported in SingleStore")
             return ""
 
-        def maskingpolicycolumnconstraint_sql(self, expression: exp.MaskingPolicyColumnConstraint) -> str:
-            self.unsupported("MASKING POLICY column constraint is not supported in SingleStore")
+        def maskingpolicycolumnconstraint_sql(self,
+            expression: exp.MaskingPolicyColumnConstraint) -> str:
+            self.unsupported(
+                "MASKING POLICY column constraint is not supported in SingleStore")
             return ""
 
-        def onupdatecolumnconstraint_sql(self, expression: exp.OnUpdateColumnConstraint) -> str:
-            self.unsupported("ON UPDATE column constraint is not supported in SingleStore")
+        def onupdatecolumnconstraint_sql(self,
+            expression: exp.OnUpdateColumnConstraint) -> str:
+            self.unsupported(
+                "ON UPDATE column constraint is not supported in SingleStore")
             return ""
 
-        def titlecolumnconstraint_sql(self, expression: exp.TitleColumnConstraint) -> str:
-            self.unsupported("TITLE column constraint is not supported in SingleStore")
+        def titlecolumnconstraint_sql(self,
+            expression: exp.TitleColumnConstraint) -> str:
+            self.unsupported(
+                "TITLE column constraint is not supported in SingleStore")
             return ""
 
-        def transformcolumnconstraint_sql(self, expression: exp.TransformColumnConstraint) -> str:
-            self.unsupported("TRANSFORM column constraint is not supported in SingleStore")
+        def transformcolumnconstraint_sql(self,
+            expression: exp.TransformColumnConstraint) -> str:
+            self.unsupported(
+                "TRANSFORM column constraint is not supported in SingleStore")
             return ""
 
-        def computedcolumnconstraint_sql(self, expression: exp.ComputedColumnConstraint) -> str:
+        def computedcolumnconstraint_sql(self,
+            expression: exp.ComputedColumnConstraint) -> str:
             this = self.sql(expression, "this")
             not_null = ""
             if expression.args.get("not_null"):
@@ -2371,9 +2428,197 @@ class SingleStore(Dialect):
             return f"AS {this} PERSISTED AUTO{not_null}"
 
         @unsupported_args("desc", "options")
-        def primarykeycolumnconstraint_sql(self, expression: exp.PrimaryKeyColumnConstraint) -> str:
+        def primarykeycolumnconstraint_sql(self,
+            expression: exp.PrimaryKeyColumnConstraint) -> str:
             return f"PRIMARY KEY"
 
-        @unsupported_args("this", "nulls_sql", "on_conflict", "index_type", "options")
-        def uniquecolumnconstraint_sql(self, expression: exp.UniqueColumnConstraint) -> str:
+        @unsupported_args("this", "nulls_sql", "on_conflict", "index_type",
+                          "options")
+        def uniquecolumnconstraint_sql(self,
+            expression: exp.UniqueColumnConstraint) -> str:
             return f"UNIQUE"
+
+        def tags_sql(self, expression: exp.Tags) -> str:
+            self.unsupported(
+                "TAG column constraint is not supported in SingleStore")
+            return ""
+
+        def watermarkcolumnconstraint_sql(self,
+            expression: exp.WatermarkColumnConstraint) -> str:
+            self.unsupported(
+                "WATERMARK column constraint is not supported in SingleStore")
+            return ""
+
+        @unsupported_args("materialized", "concurrently", "cascade",
+                          "expressions", "constraints", "purge")
+        def drop_sql(self, expression: exp.Drop) -> str:
+            this = self.sql(expression, "this")
+            kind = expression.args["kind"]
+            kind = self.dialect.INVERSE_CREATABLE_KIND_MAPPING.get(kind) or kind
+            exists_sql = " IF EXISTS " if expression.args.get("exists") else " "
+            on_cluster = self.sql(expression, "cluster")
+            on_cluster = f" {on_cluster}" if on_cluster else ""
+            temporary = " TEMPORARY" if expression.args.get("temporary") else ""
+            return f"DROP{temporary} {kind}{exists_sql}{this}{on_cluster}"
+
+        # TODO: implement using INSERT INTO
+        # https://docs.singlestore.com/db/v8.9/reference/sql-reference/data-manipulation-language-dml/select/#select-into-gcs
+        def export_sql(self, expression: exp.Export) -> str:
+            self.unsupported(
+                "EXPORT query is not supported in SingleStore")
+            return super().export_sql(expression)
+
+        def check_sql(self, expression: exp.Check) -> str:
+            self.unsupported(
+                "CHECK column constraint is not supported in SingleStore")
+            return super().check_sql(expression)
+
+        def changes_sql(self, expression: exp.Changes) -> str:
+            self.unsupported(
+                "CHANGES clause is not supported in SingleStore")
+            return super().changes_sql(expression)
+
+        def connect_sql(self, expression: exp.Connect) -> str:
+            self.unsupported(
+                "CONNECT BY clause is not supported in SingleStore")
+            return super().connect_sql(expression)
+
+        # TODO: implement using LOAD DATA and INSERT INTO
+        def copyparameter_sql(self, expression: exp.CopyParameter) -> str:
+            self.unsupported(
+                "COPY query is not supported in SingleStore")
+            return super().copyparameter_sql(expression)
+
+        def credentials_sql(self, expression: exp.Credentials) -> str:
+            self.unsupported(
+                "COPY query is not supported in SingleStore")
+            return super().credentials_sql(expression)
+
+        def prior_sql(self, expression: exp.Prior) -> str:
+            self.unsupported(
+                "CONNECT BY clause is not supported in SingleStore")
+            return super().prior_sql(expression)
+
+        # TODO: implement using INSERT INTO
+        def directory_sql(self, expression: exp.Directory) -> str:
+            self.unsupported(
+                "INSERT OVERWRITE DIRECTORY query is not supported in SingleStore")
+            return super().directory_sql(expression)
+
+        def foreignkey_sql(self, expression: exp.ForeignKey) -> str:
+            self.unsupported(
+                "Foreign keys are not supported in SingleStore")
+            return super().foreignkey_sql(expression)
+
+        def columnprefix_sql(self, expression: exp.ColumnPrefix) -> str:
+            self.unsupported(
+                "Using column prefix for PK is not supported in SingleStore")
+            return super().columnprefix_sql(expression)
+
+        @unsupported_args("options")
+        def primarykey_sql(self, expression: exp.PrimaryKey) -> str:
+            expressions = self.expressions(expression, flat=True)
+            return f"PRIMARY KEY ({expressions})"
+
+        def opclass_sql(self, expression: exp.Opclass) -> str:
+            self.unsupported(
+                "Operator classes are not supported in SingleStore")
+            return f"{self.sql(expression, 'this')}"
+
+        @unsupported_args("amp")
+        @unsupported_args("primary")
+        def index_sql(self, expression: exp.Index) -> str:
+            unique = "UNIQUE " if expression.args.get("unique") else ""
+            name = self.sql(expression, "this")
+            name = f"{name} " if name else ""
+            table = self.sql(expression, "table")
+            table = f"{self.INDEX_ON} {table}" if table else ""
+
+            index = "INDEX " if not table else ""
+
+            params = self.sql(expression, "params")
+            return f"{unique}{index}{name}{table}{params}"
+
+        def withoperator_sql(self, expression: exp.WithOperator) -> str:
+            self.unsupported(
+                "Indexes with operator are not supported in SingleStore")
+            return self.sql(expression, 'this')
+
+        @unsupported_args("include", "with_storage", "tablespace",
+                          "partition_by", "where", "on")
+        def indexparameters_sql(self, expression: exp.IndexParameters) -> str:
+            using = self.sql(expression, "using")
+            using = f" USING {using}" if using else ""
+            columns = self.expressions(expression, key="columns", flat=True)
+            columns = f"({columns})" if columns else ""
+
+            return f"{columns}{using}"
+
+        def conditionalinsert_sql(self,
+            expression: exp.ConditionalInsert) -> str:
+            self.unsupported(
+                "Conditional insert is not supported in SingleStore")
+            return super().conditionalinsert_sql(expression)
+
+        def multitableinserts_sql(self,
+            expression: exp.MultitableInserts) -> str:
+            self.unsupported(
+                "Multitable insert is not supported in SingleStore")
+            return super().multitableinserts_sql(expression)
+
+        @unsupported_args("constraint", "conflict_keys", "where")
+        def onconflict_sql(self, expression: exp.OnConflict) -> str:
+            conflict = "ON DUPLICATE KEY" if expression.args.get(
+                "duplicate") else "ON CONFLICT"
+
+            action = self.sql(expression, "action")
+
+            expressions = self.expressions(expression, flat=True)
+            expressions = f" {expressions}" if expressions else ""
+
+            return f"{conflict} {action}{expressions}"
+
+        def oncondition_sql(self, expression: exp.OnCondition) -> str:
+            self.unsupported(
+                "Setting on empty or on error behaviour for JSON functions is not supported in SingleStore")
+            return ""
+
+        def returning_sql(self, expression: exp.Returning) -> str:
+            self.unsupported(
+                "RETURNING is not supported in SingleStore")
+            return ""
+
+        def introducer_sql(self, expression: exp.Introducer) -> str:
+            self.unsupported(
+                "Character set introducers are not supported in SingleStore")
+            return f"{self.sql(expression, 'expression')}"
+
+        def national_sql(self, expression: exp.National,
+            prefix: str = "N") -> str:
+            return self.sql(exp.Literal.string(expression.name))
+
+        @unsupported_args("partition", "serde")
+        def loaddata_sql(self, expression: exp.LoadData) -> str:
+            local = " LOCAL" if expression.args.get("local") else ""
+            inpath = f" INFILE {self.sql(expression, 'inpath')}"
+            overwrite = " REPLACE" if expression.args.get("overwrite") else ""
+            this = f" INTO TABLE {self.sql(expression, 'this')}"
+            input_format = expression.args.get("input_format")
+            input_format = f" FORMAT {input_format.this}" if input_format else ""
+            return f"LOAD DATA{local}{inpath}{overwrite}{this}{input_format}"
+
+        @unsupported_args("kind")
+        def grant_sql(self, expression: exp.Grant) -> str:
+            privileges_sql = self.expressions(expression, key="privileges",
+                                              flat=True)
+
+            securable = self.sql(expression, "securable")
+            securable = f" {securable}" if securable else ""
+
+            principals = self.expressions(expression, key="principals",
+                                          flat=True)
+
+            grant_option = " WITH GRANT OPTION" if expression.args.get(
+                "grant_option") else ""
+
+            return f"GRANT {privileges_sql} ON{securable} TO {principals}{grant_option}"
