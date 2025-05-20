@@ -1,4 +1,7 @@
 import this
+from functools import reduce
+
+from setuptools.command.alias import alias
 
 from sqlglot import Dialect, generator, Tokenizer, TokenType, tokens
 from sqlglot.dialects.dialect import NormalizationStrategy, no_ilike_sql, \
@@ -62,7 +65,7 @@ class SingleStore(Dialect):
         BIT_STRINGS = [("b'", "'"), ("B'", "'"), ("0b", "")]
         HEX_STRINGS = [("x'", "'"), ("X'", "'"), ("0x", "")]
         BYTE_STRINGS = [("e'", "'"), ("E'", "'")]
-        IDENTIFIERS = ['"', '`']
+        IDENTIFIERS = ['`', '"']
         QUOTES = ["'", '"']
         STRING_ESCAPES = ["'", '"', "\\"]
         COMMENTS = ["--", "#", ("/*", "*/")]
@@ -2622,3 +2625,66 @@ class SingleStore(Dialect):
                 "grant_option") else ""
 
             return f"GRANT {privileges_sql} ON{securable} TO {principals}{grant_option}"
+
+        @unsupported_args("view", "ordinality")
+        def lateral_sql(self, expression: exp.Lateral) -> str:
+            this = self.sql(expression, "this")
+
+            alias = self.sql(expression, "alias")
+            alias = f" AS {alias}" if alias else ""
+            condition = " ON TRUE" if expression.args.get(
+                "cross_apply") is False else ""
+            op = self.lateral_op(expression)
+
+            return f"{op} {this}{alias}{condition}"
+
+        @unsupported_args("sample", "joins")
+        def tablefromrows_sql(self, expression: exp.TableFromRows) -> str:
+            # Copy alias to values
+            # This is done to ensure that column names are correctly propagated
+            if expression.args.get("alias") and isinstance(expression.this,
+                                                           exp.Values):
+                expression.this.set("alias",
+                                    expression.args.get("alias").copy())
+
+            table = self.sql(expression.this)
+            pivots = self.expressions(expression, key="pivots", sep="",
+                                      flat=True)
+            return f"{table}{pivots}"
+
+        @unsupported_args("materialized")
+        def cte_sql(self, expression: exp.CTE) -> str:
+            alias = expression.args.get("alias")
+            if alias:
+                alias.add_comments(expression.pop_comments())
+
+            alias_sql = self.sql(expression, "alias")
+
+            return f"{alias_sql} AS {self.wrap(expression)}"
+
+        def tablealias_sql(self, expression: exp.TableAlias) -> str:
+            alias = self.sql(expression, "this")
+            columns = self.expressions(expression, key="columns", flat=True)
+            columns = f"({columns})" if columns else ""
+
+            if columns and not isinstance(expression.parent, exp.CTE):
+                columns = ""
+                self.unsupported(
+                    "Named columns are not supported in table alias.")
+
+            if not alias and not self.dialect.UNNEST_COLUMN_ONLY:
+                alias = self._next_name()
+
+            return f"{alias}{columns}"
+
+        @unsupported_args("sample")
+        def subquery_sql(self, expression: exp.Subquery,
+            sep: str = " AS ") -> str:
+            alias = self.sql(expression, "alias")
+            alias = f"{sep}{alias}" if alias else ""
+
+            pivots = self.expressions(expression, key="pivots", sep="",
+                                      flat=True)
+            sql = self.query_modifiers(expression, self.wrap(expression), alias,
+                                       pivots)
+            return self.prepend_ctes(expression, sql)
