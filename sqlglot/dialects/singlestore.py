@@ -1,4 +1,5 @@
 import this
+from collections import defaultdict
 from functools import reduce
 
 from setuptools.command.alias import alias
@@ -2688,3 +2689,52 @@ class SingleStore(Dialect):
             sql = self.query_modifiers(expression, self.wrap(expression), alias,
                                        pivots)
             return self.prepend_ctes(expression, sql)
+
+        @unsupported_args("returning", "overwrite", "alternative",
+                          "is_function", "exists", "by_name", "where", "stored",
+                          "partition", "source", "settings")
+        def insert_sql(self, expression: exp.Insert) -> str:
+            hint = self.sql(expression, "hint")
+            this = " INTO"
+
+            ignore = " IGNORE" if expression.args.get("ignore") else ""
+            this = f"{this} {self.sql(expression, 'this')}"
+
+            expression_sql = f"{self.sep()}{self.sql(expression, 'expression')}"
+            on_conflict = self.sql(expression, "conflict")
+            on_conflict = f" {on_conflict}" if on_conflict else ""
+            expression_sql = f"{expression_sql}{on_conflict}"
+
+            sql = f"INSERT{hint}{ignore}{this}{expression_sql}"
+            return self.prepend_ctes(expression, sql)
+
+        @unsupported_args("returning", "using", "cluster")
+        def delete_sql(self, expression: exp.Delete) -> str:
+            this = self.sql(expression, "this")
+            this = f" FROM {this}" if this else ""
+            where = self.sql(expression, "where")
+            limit = self.sql(expression, "limit")
+            tables = self.expressions(expression, key="tables")
+            tables = f" {tables}" if tables else ""
+
+            return self.prepend_ctes(expression,
+                                     f"DELETE{tables}{this}{where}{limit}")
+
+        @unsupported_args("order", "returning", "from")
+        def update_sql(self, expression: exp.Update) -> str:
+            this = self.sql(expression, "this")
+            set_sql = self.expressions(expression, flat=True)
+            where_sql = self.sql(expression, "where")
+            limit = self.sql(expression, "limit")
+
+            sql = f"UPDATE {this} SET {set_sql}{where_sql}{limit}"
+            return self.prepend_ctes(expression, sql)
+
+        # TODO: implement using LOAD DATA or SELECT INTO
+        def copy_sql(self, expression: exp.Copy) -> str:
+            self.unsupported("COPY query is not supported in SingleStore")
+            return super().copy_sql(expression)
+
+        def merge_sql(self, expression: exp.Merge) -> str:
+            self.unsupported("MERGE query is not supported in SingleStore")
+            return super().merge_sql(expression)
