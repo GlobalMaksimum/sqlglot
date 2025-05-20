@@ -2377,3 +2377,142 @@ class TestSingleStore(Validator):
             sql="WITH recent_orders AS (SELECT * FROM orders WHERE created_at > '2024-01-01') SELECT 'a', `1` FROM (SELECT user_id, COUNT(*) AS order_count FROM recent_orders GROUP BY user_id) AS order_summary PIVOT(MAX(order_count) FOR user_id IN (1, 2, 3)) AS e",
             exp_type=exp.Subquery
         )
+
+    def test_dml_generation(self):
+        self.validate_generation(
+            sql="UPDATE users SET name = 'Alice'",
+            exp_type=exp.Update
+        )
+        self.validate_generation(
+            sql="UPDATE users SET email = n.email FROM new_users AS n WHERE users.id = n.id",
+            expected_sql="UPDATE users SET email = n.email WHERE users.id = n.id",
+            error_message="Argument 'from' is not supported for expression 'Update' when targeting SingleStore.",
+            exp_type=exp.Update,
+            run=False
+        )
+        self.validate_generation(
+            sql="UPDATE users SET name = 'Bob' WHERE signup_date < '2024-01-01' AND PARTITION_ID() = 0 LIMIT 3",
+            exp_type=exp.Update
+        )
+        self.validate_generation(
+            sql="UPDATE users SET active = FALSE RETURNING id, name",
+            expected_sql="UPDATE users SET active = FALSE",
+            error_message="Argument 'returning' is not supported for expression 'Update' when targeting SingleStore.",
+            exp_type=exp.Update,
+            run=False
+        )
+        self.validate_generation(
+            sql="UPDATE users SET status = 'archived' ORDER BY last_login LIMIT 10",
+            expected_sql="UPDATE users SET status = 'archived' LIMIT 10",
+            error_message="Argument 'order' is not supported for expression 'Update' when targeting SingleStore.",
+            exp_type=exp.Update,
+            run=False
+        )
+        self.validate_generation(
+            sql="WITH recent_logins(id) AS (SELECT id FROM users) UPDATE users SET name = 'Bob' WHERE users.id IN (SELECT id FROM recent_logins)",
+            exp_type=exp.Update,
+        )
+        self.validate_generation(
+            sql="DELETE FROM users",
+            exp_type=exp.Delete
+        )
+        self.validate_generation(
+            sql="DELETE FROM users USING sessions WHERE users.id = sessions.user_id",
+            expected_sql="DELETE FROM users WHERE users.id = sessions.user_id",
+            error_message="Argument 'using' is not supported for expression 'Delete' when targeting SingleStore.",
+            exp_type=exp.Delete,
+            run=False
+        )
+        self.validate_generation(
+            sql="DELETE FROM users WHERE name = 'Bob' RETURNING id",
+            expected_sql="DELETE FROM users WHERE name = 'Bob'",
+            error_message="Argument 'returning' is not supported for expression 'Delete' when targeting SingleStore.",
+            exp_type=exp.Delete,
+            run=False
+        )
+        self.validate_generation(
+            sql="DELETE FROM users LIMIT 10",
+            exp_type=exp.Delete
+        )
+        self.validate_generation(
+            sql="DELETE users FROM users JOIN orders ON users.id = orders.user_id WHERE orders.id = 2",
+            exp_type=exp.Delete
+        )
+        self.validate_generation(
+            sql="WITH inactive AS (SELECT id FROM users WHERE id = 3) DELETE users FROM users JOIN inactive ON users.id = inactive.id WHERE users.id = inactive.id LIMIT 5",
+            exp_type=exp.Delete
+        )
+        self.validate_generation(
+            sql="INSERT INTO users (id, name) VALUES (1, 'Alice')",
+            exp_type=exp.Insert
+        )
+        self.validate_generation(
+            sql="INSERT OVERWRITE users (id, name) VALUES (2, 'Bob')",
+            expected_sql="INSERT INTO users (id, name) VALUES (2, 'Bob')",
+            error_message="Argument 'overwrite' is not supported for expression 'Insert' when targeting SingleStore.",
+            exp_type=exp.Insert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT OVERWRITE DIRECTORY '/tmp/out.csv' SELECT id, name FROM users",
+            expected_sql="INSERT INTO DIRECTORY '/tmp/out.csv' SELECT id, name FROM users",
+            error_message="Argument 'overwrite' is not supported for expression 'Insert' when targeting SingleStore.",
+            exp_type=exp.Insert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT OR REPLACE INTO users (id, name) VALUES (3, 'Charlie')",
+            expected_sql="INSERT INTO users (id, name) VALUES (3, 'Charlie')",
+            error_message="Argument 'alternative' is not supported for expression 'Insert' when targeting SingleStore.",
+            exp_type=exp.Insert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT IGNORE INTO users (id, name) VALUES (4, 'Diana')",
+            exp_type=exp.Insert
+        )
+        self.validate_generation(
+            sql="INSERT INTO FUNCTION process_users (id, name) VALUES (5, 'Eve')",
+            expected_sql="INSERT INTO PROCESS_USERS(id, name) VALUES (5, 'Eve')",
+            error_message="Argument 'is_function' is not supported for expression 'Insert' when targeting SingleStore.",
+            exp_type=exp.Insert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT INTO users (id, name) IF EXISTS VALUES (6, 'Frank')",
+            expected_sql="INSERT INTO users (id, name) VALUES (6, 'Frank')",
+            error_message="Argument 'exists' is not supported for expression 'Insert' when targeting SingleStore.",
+            exp_type=exp.Insert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT INTO users(id, name) BY NAME VALUES (7, 'George')",
+            expected_sql="INSERT INTO users (id, name) VALUES (7, 'George')",
+            error_message="Argument 'by_name' is not supported for expression 'Insert' when targeting SingleStore.",
+            exp_type=exp.Insert,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT INTO users SELECT * FROM users ON DUPLICATE KEY UPDATE name = 'q'",
+            exp_type=exp.Insert
+        )
+        self.validate_generation(
+            sql="INSERT INTO users (id, name) VALUES (7, 'George') ON DUPLICATE KEY UPDATE name = 'q'",
+            exp_type=exp.Insert
+        )
+        self.validate_generation(
+            sql="INSERT INTO users (id, name) VALUES (7, 'George') ON DUPLICATE KEY UPDATE name = 'q'",
+            exp_type=exp.Insert
+        )
+        self.validate_generation(
+            sql="COPY INTO users FROM '/data/users.csv' WITH (FORMAT csv, HEADER, DELIMITER ',')",
+            error_message="COPY query is not supported in SingleStore",
+            exp_type=exp.Copy,
+            run=False
+        )
+        self.validate_generation(
+            sql="MERGE INTO users AS u USING new_users AS n ON u.id = n.id WHEN MATCHED THEN UPDATE SET name = n.name, email = n.email WHEN NOT MATCHED THEN INSERT (id, name, email) VALUES (n.id, n.name, n.email)",
+            error_message="MERGE query is not supported in SingleStore",
+            exp_type=exp.Merge,
+            run=False
+        )
