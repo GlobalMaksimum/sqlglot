@@ -2320,3 +2320,60 @@ class TestSingleStore(Validator):
             error_message="WATERMARK column constraint is not supported in SingleStore",
             exp_type=exp.WatermarkColumnConstraint
         )
+
+    def test_derived_table_generation(self):
+        self.validate_generation(
+            sql="SELECT * FROM users OUTER APPLY (SELECT * FROM orders WHERE orders.user_id = users.id) AS o",
+            expected_sql="SELECT * FROM users LEFT JOIN LATERAL (SELECT * FROM orders WHERE orders.user_id = users.id) AS o ON TRUE",
+            from_dialect="tsql",
+            exp_type=exp.Lateral
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users CROSS APPLY (SELECT * FROM orders WHERE orders.user_id = users.id) AS o",
+            expected_sql="SELECT * FROM users INNER JOIN LATERAL (SELECT * FROM orders WHERE orders.user_id = users.id) AS o",
+            exp_type=exp.Lateral
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users, LATERAL (SELECT * FROM orders WHERE orders.user_id = users.id) AS order_sub",
+            exp_type=exp.Lateral
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users LEFT JOIN LATERAL (SELECT * FROM orders WHERE orders.user_id = users.id) AS o ON o.user_id = users.id",
+            exp_type=exp.Lateral
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users, LATERAL (SELECT * FROM orders)",
+            exp_type=exp.Lateral
+        )
+        self.validate_generation(
+            sql="SELECT * FROM TABLE (VALUES (1, 'Alice'), (2, 'Bob')) AS users(id, name)",
+            expected_sql="SELECT * FROM (SELECT 1 AS id, 'Alice' AS name UNION ALL SELECT 2, 'Bob') AS users",
+            from_dialect="snowflake",
+            exp_type=exp.TableFromRows,
+        )
+        self.validate_generation(
+            sql="SELECT 'MAX ID', Alice, Bob FROM TABLE (VALUES (1, 'Alice'), (2, 'Bob')) AS users(id, name) PIVOT (MAX(id) FOR name IN ('Alice', 'Bob')) AS p",
+            expected_sql="SELECT 'MAX ID', Alice, Bob FROM (SELECT 1 AS id, 'Alice' AS name UNION ALL SELECT 2, 'Bob') AS users PIVOT(MAX(id) FOR name IN ('Alice', 'Bob')) AS p",
+            from_dialect="snowflake",
+            exp_type=exp.TableFromRows,
+        )
+        self.validate_generation(
+            sql="SELECT * FROM TABLE (VALUES (1, 'Alice'), (2, 'Bob')) AS users(id, name)",
+            expected_sql="SELECT * FROM (SELECT 1 AS id, 'Alice' AS name UNION ALL SELECT 2, 'Bob') AS users",
+            from_dialect="snowflake",
+            exp_type=exp.Values,
+        )
+        self.validate_generation(
+            sql="SELECT 'MAX ID', Alice, Bob FROM TABLE (VALUES (1, 'Alice'), (2, 'Bob')) AS users(id, name) PIVOT (MAX(id) FOR name IN ('Alice', 'Bob')) AS p",
+            expected_sql="SELECT 'MAX ID', Alice, Bob FROM (SELECT 1 AS id, 'Alice' AS name UNION ALL SELECT 2, 'Bob') AS users PIVOT(MAX(id) FOR name IN ('Alice', 'Bob')) AS p",
+            from_dialect="snowflake",
+            exp_type=exp.Values,
+        )
+        self.validate_generation(
+            sql="WITH user_names(id, name) AS (SELECT id, name FROM users) SELECT * FROM user_names",
+            exp_type=exp.CTE,
+        )
+        self.validate_generation(
+            sql="WITH recent_orders AS (SELECT * FROM orders WHERE created_at > '2024-01-01') SELECT 'a', `1` FROM (SELECT user_id, COUNT(*) AS order_count FROM recent_orders GROUP BY user_id) AS order_summary PIVOT(MAX(order_count) FOR user_id IN (1, 2, 3)) AS e",
+            exp_type=exp.Subquery
+        )
