@@ -22,6 +22,8 @@ class TestSingleStore(Validator):
             cur.execute("DROP DATABASE IF EXISTS db")
             cur.execute("CREATE DATABASE db")
             cur.execute("USE db")
+            cur.execute("DROP ROLE IF EXISTS r")
+            cur.execute("CREATE ROLE r")
             cur.execute("""CREATE ROWSTORE TABLE users (
     id INT PRIMARY KEY,
     name VARCHAR(100),
@@ -82,9 +84,9 @@ class TestSingleStore(Validator):
 """)
 
     def validate_generation(self,
-        sql: str, expected_sql: str = None, error_message: str = None,
-        from_dialect="mysql", exp_type: t.Type[exp.Expression] = None,
-        run: bool = True):
+                            sql: str, expected_sql: str = None, error_message: str = None,
+                            from_dialect="mysql", exp_type: t.Type[exp.Expression] = None,
+                            run: bool = True):
         query = parse_one(sql, read=from_dialect)
 
         # check that expression which is validated is somewhere in the query
@@ -1947,8 +1949,9 @@ class TestSingleStore(Validator):
             exp_type=exp.Filter)
         self.validate_generation(
             sql="SELECT * FROM t1 CHANGES (INFORMATION => DEFAULT) AT (TIMESTAMP => @ts1)",
+            expected_sql="SELECT * FROM t1",
             from_dialect="snowflake",
-            error_message="CHANGES clause is not supported in SingleStore",
+            error_message="Argument 'changes' is not supported for expression 'Table' when targeting SingleStore.",
             exp_type=exp.Changes,
             run=False
         )
@@ -2223,6 +2226,179 @@ class TestSingleStore(Validator):
         self.validate_generation(
             sql="SELECT * FROM orders ORDER BY created_at NULLS LAST",
             exp_type=exp.Ordered
+        )
+        self.validate_generation(
+            sql="GRANT SELECT(id, name) ON users TO `root`",
+            exp_type=exp.GrantPrivilege
+        )
+        self.validate_generation(
+            sql="GRANT SELECT(id, name) ON users TO ROLE r",
+            exp_type=exp.GrantPrincipal
+        )
+        self.validate_generation(
+            sql="CREATE TAG cost_center ALLOWED_VALUES 'a', 'b'",
+            error_message="TAGs are not supported in SingleStore",
+            exp_type=exp.AllowedValuesProperty,
+            from_dialect="snowflake",
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE orders_2024_01 PARTITION OF orders FOR VALUES FROM ('2024-01-01') TO ('2024-02-01')",
+            from_dialect="postgres",
+            exp_type=exp.PartitionBoundSpec,
+            error_message="PARTITION OF clause is not supported in SingleStore",
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT TRANSFORM(a, b) USING 'cat' AS (x, y)",
+            from_dialect="spark2",
+            error_message="TRANSFORM clause is not supported in SingleStore",
+            exp_type=exp.QueryTransform,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE Properties (a INT) COLLATE=utf8mb4_general_ci",
+            exp_type=exp.Properties
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users QUALIFY ROW_NUMBER() OVER (PARTITION BY id) = 1",
+            error_message="QUALIFY clause is not supported in SingleStore",
+            exp_type=exp.Qualify,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE EXTERNAL TABLE family (id INT, name STRING) ROW FORMAT SERDE 'com.ly.spark.serde.SerDeExample' STORED AS INPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleInputFormat' OUTPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleOutputFormat' LOCATION '/tmp/family/'",
+            expected_sql="CREATE EXTERNAL TABLE family (id INT, name TEXT) None='com.ly.spark.serde.SerDeExample' LOCATION '/tmp/family/'  (FORMAT=INPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleInputFormat' OUTPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleOutputFormat')",
+            from_dialect="spark2",
+            error_message="INPUTFORMAT and OUTPUTFORMAT clauses are not supported in SingleStore",
+            exp_type=exp.InputOutputFormat,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE OR REPLACE FUNCTION tvf_1(a INT) RETURNS TABLE AS RETURN SELECT * FROM users LIMIT a",
+            from_dialect="postgres",
+            exp_type=exp.Return
+        )
+        self.validate_generation(
+            sql="CREATE TABLE Reference (OrderID INT NOT NULL, OrderNumber INT NOT NULL, PersonID INT, FOREIGN KEY (PersonID) REFERENCES Persons (PersonID))",
+            error_message="Foreign keys are not supported in SingleStore",
+            exp_type=exp.Reference,
+            run=False
+        )
+        self.validate_generation(
+            sql="INSERT INTO users (id, name) VALUES (1001, 'John')",
+            exp_type=exp.Tuple
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users OPTION (RECOMPILE=1)",
+            expected_sql="SELECT * FROM users",
+            from_dialect="tsql",
+            error_message="Unsupported query option.",
+            exp_type=exp.QueryOption
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users WITH (BROADCAST)",
+            expected_sql="SELECT * FROM users",
+            error_message="Table hints are not supported in SingleStore",
+            exp_type=exp.WithTableHint
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users USE INDEX (PRIMARY)",
+            exp_type=exp.IndexTableHint
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users USE INDEX (PRIMARY) IGNORE INDEX FOR ORDER BY (PRIMARY)",
+            expected_sql="SELECT * FROM users USE INDEX (PRIMARY) IGNORE INDEX (PRIMARY)",
+            exp_type=exp.IndexTableHint,
+            error_message="Argument 'target' is not supported for expression 'IndexTableHint' when targeting SingleStore.",
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users AT(TIMESTAMP => '2024-03-13 13:56:09.553')",
+            expected_sql="SELECT * FROM users",
+            error_message="Historical data is not supported in SingleStore",
+            exp_type=exp.HistoricalData
+        )
+        self.validate_generation(
+            sql="PUT 'file.txt' @my_stage",
+            error_message="PUT query is not supported in SingleStore",
+            from_dialect="snowflake",
+            exp_type=exp.Put,
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users",
+            exp_type=exp.Table
+        )
+        self.validate_generation(
+            sql="SET @a = 1",
+            exp_type=exp.Var
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users FOR VERSION AS OF '2024-01-01'",
+            expected_sql="SELECT * FROM users",
+            error_message="Argument 'version' is not supported for expression 'Table' when targeting SingleStore.",
+            exp_type=exp.Version
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SchemaTable (a INT)",
+            exp_type=exp.Schema
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users FOR UPDATE",
+            exp_type=exp.Lock
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users TABLESAMPLE SYSTEM (10)",
+            expected_sql="SELECT * FROM users",
+            error_message="Argument 'sample' is not supported for expression 'Table' when targeting SingleStore.",
+            exp_type=exp.TableSample,
+        )
+        self.validate_generation(
+            sql="SELECT 'MAX ID', Alice, Bob FROM TABLE (VALUES (1, 'Alice'), (2, 'Bob')) AS users(id, name) PIVOT (MAX(id) FOR name IN ('Alice', 'Bob')) AS p",
+            expected_sql="SELECT 'MAX ID', Alice, Bob FROM (SELECT 1 AS id, 'Alice' AS name UNION ALL SELECT 2, 'Bob') AS users PIVOT(MAX(id) FOR name IN ('Alice', 'Bob')) AS p",
+            exp_type=exp.Pivot,
+            from_dialect="snowflake",
+        )
+        self.validate_generation(
+            sql="SELECT 'MAX ID', Alice, Bob FROM TABLE (VALUES (1, 'Alice'), (2, 'Bob')) AS users(id, name) PIVOT (MAX(id), MIN(id) FOR name IN ('Alice', 'Bob')) AS p",
+            expected_sql="SELECT 'MAX ID', Alice, Bob FROM (SELECT 1 AS id, 'Alice' AS name UNION ALL SELECT 2, 'Bob') AS users PIVOT(MAX(id), MIN(id) FOR name IN ('Alice', 'Bob')) AS p",
+            exp_type=exp.Pivot,
+            error_message="Multiple aggregations in PIVOT are not supported in SingleStore",
+            from_dialect="snowflake",
+            run=False
+        )
+        self.validate_generation(
+            sql="PIVOT cities ON year USING SUM(population) AS total, MAX(population) AS max GROUP BY country",
+            exp_type=exp.Pivot,
+            error_message="Simplified PIVOT is not supported in SingleStore",
+            from_dialect="duckdb",
+            run=False
+        )
+        self.validate_generation(
+            sql="UNPIVOT monthly_sales ON jan, feb, mar, apr, may, jun INTO NAME month VALUE sales",
+            exp_type=exp.UnpivotColumns,
+            error_message="Argument 'unpivot' is not supported for expression 'Pivot' when targeting SingleStore.",
+            from_dialect="duckdb",
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT SUM(id) OVER (ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) FROM users",
+            exp_type=exp.WindowSpec
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users PREWHERE age > 30",
+            expected_sql="SELECT * FROM users",
+            from_dialect="clickhouse",
+            exp_type=exp.PreWhere
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users WHERE age > 30",
+            exp_type=exp.Where
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users",
+            exp_type=exp.Star
         )
 
     def test_drop_generation(self):
