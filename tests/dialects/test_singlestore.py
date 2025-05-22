@@ -82,9 +82,9 @@ class TestSingleStore(Validator):
 """)
 
     def validate_generation(self,
-        sql: str, expected_sql: str = None, error_message: str = None,
-        from_dialect="mysql", exp_type: t.Type[exp.Expression] = None,
-        run: bool = True):
+                            sql: str, expected_sql: str = None, error_message: str = None,
+                            from_dialect="mysql", exp_type: t.Type[exp.Expression] = None,
+                            run: bool = True):
         query = parse_one(sql, read=from_dialect)
 
         # check that expression which is validated is somewhere in the query
@@ -2098,6 +2098,78 @@ class TestSingleStore(Validator):
             from_dialect="redshift",
             exp_type=exp.Grant,
             run=False
+        )
+        self.validate_generation(
+            sql="SELECT status, COUNT(*) FROM orders GROUP BY status",
+            exp_type=exp.Group
+        )
+        self.validate_generation(
+            sql="SELECT category, stock_quantity, SUM(price) FROM products GROUP BY CUBE (category, stock_quantity)",
+            exp_type=exp.Cube
+        )
+        self.validate_generation(
+            sql="SELECT user_id, status, SUM(amount) FROM orders GROUP BY ROLLUP (user_id, status)",
+            exp_type=exp.Rollup
+        )
+        self.validate_generation(
+            sql="SELECT user_id, event_type, COUNT(*) FROM events GROUP BY GROUPING SETS ((user_id, event_type), (event_type))",
+            exp_type=exp.GroupingSets
+        )
+        self.validate_generation(
+            sql="SELECT ARRAY_MAP(x -> x + 1, [1, 2, 3])",
+            exp_type=exp.Lambda
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users ORDER BY id LIMIT 5",
+            exp_type=exp.Limit
+        )
+        self.validate_generation(
+            sql="SELECT * FROM orders LIMIT 5 OFFSET 10",
+            exp_type=exp.LimitOptions
+        )
+        self.validate_generation(
+            sql="SELECT * FROM orders JOIN users ON orders.user_id = users.id",
+            exp_type=exp.Join
+        )
+        self.validate_generation(
+            sql="SELECT * FROM events MATCH_RECOGNIZE ( PARTITION BY user_id ORDER BY occurred_at MEASURES A.occurred_at AS start_time PATTERN (A B) DEFINE A AS A.event_type = 'login' )",
+            exp_type=exp.MatchRecognize
+        )
+        self.validate_generation(
+            sql="SELECT * FROM events MATCH_RECOGNIZE (MEASURES A.event_type AS start_event PATTERN (A) DEFINE A AS A.event_type = 'purchase')",
+            exp_type=exp.MatchRecognizeMeasure
+        )
+        self.validate_generation(
+            sql="SELECT FINAL * FROM orders",
+            exp_type=exp.Final
+        )
+        self.validate_generation(
+            sql="SELECT * FROM events OFFSET 3",
+            exp_type=exp.Offset
+        )
+        self.validate_generation(
+            sql="SELECT * FROM users ORDER BY signup_date DESC",
+            exp_type=exp.Order
+        )
+        self.validate_generation(
+            sql="SELECT * FROM orders ORDER BY created_at CLUSTER BY user_id",
+            exp_type=exp.Cluster
+        )
+        self.validate_generation(
+            sql="SELECT * FROM events DISTRIBUTE BY user_id",
+            exp_type=exp.Distribute
+        )
+        self.validate_generation(
+            sql="SELECT * FROM products SORT BY category",
+            exp_type=exp.Sort
+        )
+        self.validate_generation(
+            sql="SELECT occurred_at, COUNT(*) FROM events GROUP BY occurred_at WITH FILL",
+            exp_type=exp.WithFill
+        )
+        self.validate_generation(
+            sql="SELECT * FROM orders ORDERED BY created_at",
+            exp_type=exp.Ordered
         )
 
     def test_drop_generation(self):
