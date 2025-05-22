@@ -82,9 +82,9 @@ class TestSingleStore(Validator):
 """)
 
     def validate_generation(self,
-                            sql: str, expected_sql: str = None, error_message: str = None,
-                            from_dialect="mysql", exp_type: t.Type[exp.Expression] = None,
-                            run: bool = True):
+        sql: str, expected_sql: str = None, error_message: str = None,
+        from_dialect="mysql", exp_type: t.Type[exp.Expression] = None,
+        run: bool = True):
         query = parse_one(sql, read=from_dialect)
 
         # check that expression which is validated is somewhere in the query
@@ -2099,12 +2099,29 @@ class TestSingleStore(Validator):
             exp_type=exp.Grant,
             run=False
         )
+
         self.validate_generation(
-            sql="SELECT status, COUNT(*) FROM orders GROUP BY status",
+            sql="SELECT status, COUNT(*) FROM orders GROUP BY status, user_id",
             exp_type=exp.Group
         )
         self.validate_generation(
-            sql="SELECT category, stock_quantity, SUM(price) FROM products GROUP BY CUBE (category, stock_quantity)",
+            sql="SELECT status, COUNT(*) FROM orders GROUP BY ALL",
+            exp_type=exp.Group
+        )
+        self.validate_generation(
+            sql="SELECT status, COUNT(*) FROM orders GROUP BY",
+            error_message="Empty GROUP BY is not supported in SingleStore",
+            exp_type=exp.Group,
+            run=False
+        )
+        self.validate_generation(
+            sql="SELECT status, COUNT(*) FROM orders GROUP BY CUBE (amount, status), ROLLUP (user_id, status)",
+            expected_sql="SELECT status, COUNT(*) FROM orders GROUP BY CUBE (amount, status)",
+            error_message="Multiple grouping sets are not supported in SingleStore",
+            exp_type=exp.Group
+        )
+        self.validate_generation(
+            sql="SELECT amount, status, SUM(id) FROM orders GROUP BY CUBE (amount, status)",
             exp_type=exp.Cube
         )
         self.validate_generation(
@@ -2112,19 +2129,37 @@ class TestSingleStore(Validator):
             exp_type=exp.Rollup
         )
         self.validate_generation(
-            sql="SELECT user_id, event_type, COUNT(*) FROM events GROUP BY GROUPING SETS ((user_id, event_type), (event_type))",
+            sql="SELECT user_id, event_type, COUNT(*) FROM events GROUP BY GROUPING SETS ((user_id, event_type), (event_type)), GROUPING SETS ((user_id))",
+            expected_sql="SELECT user_id, event_type, COUNT(*) FROM events GROUP BY user_id, event_type",
+            error_message="Multiple grouping sets are not supported in SingleStore",
             exp_type=exp.GroupingSets
         )
         self.validate_generation(
-            sql="SELECT ARRAY_MAP(x -> x + 1, [1, 2, 3])",
-            exp_type=exp.Lambda
+            sql="SELECT user_id, event_type, COUNT(*) FROM events GROUP BY GROUPING SETS ((user_id, event_type))",
+            expected_sql="SELECT user_id, event_type, COUNT(*) FROM events GROUP BY user_id, event_type",
+            exp_type=exp.GroupingSets
+        )
+        self.validate_generation(
+            sql="SELECT ARRAY_MAP(x -> x + 1, ARRAY(1, 2, 3))",
+            error_message="Lambda functions are not supported in SingleStore",
+            exp_type=exp.Lambda,
+            run=False
         )
         self.validate_generation(
             sql="SELECT * FROM users ORDER BY id LIMIT 5",
             exp_type=exp.Limit
         )
         self.validate_generation(
-            sql="SELECT * FROM orders LIMIT 5 OFFSET 10",
+            sql="SELECT TOP 10 * FROM users",
+            expected_sql="SELECT * FROM users LIMIT 10",
+            from_dialect="tsql",
+            exp_type=exp.Limit
+        )
+        self.validate_generation(
+            sql="SELECT TOP 10 PERCENT * FROM users",
+            expected_sql="SELECT * FROM users LIMIT 10",
+            from_dialect="tsql",
+            error_message="Argument 'limit_options' is not supported for expression 'Limit' when targeting SingleStore.",
             exp_type=exp.LimitOptions
         )
         self.validate_generation(
@@ -2132,19 +2167,28 @@ class TestSingleStore(Validator):
             exp_type=exp.Join
         )
         self.validate_generation(
-            sql="SELECT * FROM events MATCH_RECOGNIZE ( PARTITION BY user_id ORDER BY occurred_at MEASURES A.occurred_at AS start_time PATTERN (A B) DEFINE A AS A.event_type = 'login' )",
-            exp_type=exp.MatchRecognize
+            sql="SELECT * FROM stock_price_history MATCH_RECOGNIZE (PARTITION BY company ORDER BY price_date NULLS LAST MEASURES MATCH_NUMBER() AS match_number, FIRST(price_date) AS start_date, LAST(price_date) AS end_date, COUNT(*) AS rows_in_sequence, COUNT(row_with_price_decrease.*) AS num_decreases, COUNT(row_with_price_increase.*) AS num_increases ONE ROW PER MATCH AFTER MATCH SKIP TO LAST row_with_price_increase PATTERN (row_before_decrease row_with_price_decrease+ row_with_price_increase+) DEFINE row_with_price_decrease AS price < LAG(price), row_with_price_increase AS price > LAG(price))",
+            error_message="MATCH_RECOGNIZE is not supported in SingleStore",
+            from_dialect="snowflake",
+            exp_type=exp.MatchRecognize,
+            run=False
         )
         self.validate_generation(
-            sql="SELECT * FROM events MATCH_RECOGNIZE (MEASURES A.event_type AS start_event PATTERN (A) DEFINE A AS A.event_type = 'purchase')",
-            exp_type=exp.MatchRecognizeMeasure
+            sql="SELECT * FROM stock_price_history MATCH_RECOGNIZE (PARTITION BY company ORDER BY price_date NULLS LAST MEASURES MATCH_NUMBER() AS match_number, FIRST(price_date) AS start_date, LAST(price_date) AS end_date, COUNT(*) AS rows_in_sequence, COUNT(row_with_price_decrease.*) AS num_decreases, COUNT(row_with_price_increase.*) AS num_increases ONE ROW PER MATCH AFTER MATCH SKIP TO LAST row_with_price_increase PATTERN (row_before_decrease row_with_price_decrease+ row_with_price_increase+) DEFINE row_with_price_decrease AS price < LAG(price), row_with_price_increase AS price > LAG(price))",
+            error_message="MATCH_RECOGNIZE is not supported in SingleStore",
+            from_dialect="snowflake",
+            exp_type=exp.MatchRecognizeMeasure,
+            run=False
         )
         self.validate_generation(
-            sql="SELECT FINAL * FROM orders",
+            sql="SELECT id, name FROM users FINAL WHERE id > 1",
+            expected_sql="SELECT id, name FROM users WHERE id > 1",
+            error_message="FINAL clause is not supported in SingleStore",
+            from_dialect="clickhouse",
             exp_type=exp.Final
         )
         self.validate_generation(
-            sql="SELECT * FROM events OFFSET 3",
+            sql="SELECT * FROM events LIMIT 2 OFFSET 3",
             exp_type=exp.Offset
         )
         self.validate_generation(
@@ -2153,22 +2197,31 @@ class TestSingleStore(Validator):
         )
         self.validate_generation(
             sql="SELECT * FROM orders ORDER BY created_at CLUSTER BY user_id",
+            expected_sql="SELECT * FROM orders ORDER BY created_at",
+            error_message="Argument 'cluster' is not supported for expression 'Select' when targeting SingleStore.",
             exp_type=exp.Cluster
         )
         self.validate_generation(
             sql="SELECT * FROM events DISTRIBUTE BY user_id",
+            expected_sql="SELECT * FROM events",
+            error_message="Argument 'distribute' is not supported for expression 'Select' when targeting SingleStore.",
             exp_type=exp.Distribute
         )
         self.validate_generation(
             sql="SELECT * FROM products SORT BY category",
+            expected_sql="SELECT * FROM products",
+            error_message="Argument 'sort' is not supported for expression 'Select' when targeting SingleStore.",
             exp_type=exp.Sort
         )
         self.validate_generation(
-            sql="SELECT occurred_at, COUNT(*) FROM events GROUP BY occurred_at WITH FILL",
+            sql="SELECT occurred_at FROM events ORDER BY occurred_at WITH FILL",
+            expected_sql="SELECT occurred_at FROM events ORDER BY occurred_at NULLS LAST",
+            error_message="WITH FILL clause is not supported in SingleStore",
+            from_dialect="clickhouse",
             exp_type=exp.WithFill
         )
         self.validate_generation(
-            sql="SELECT * FROM orders ORDERED BY created_at",
+            sql="SELECT * FROM orders ORDER BY created_at NULLS LAST",
             exp_type=exp.Ordered
         )
 
