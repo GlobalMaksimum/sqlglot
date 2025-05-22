@@ -1829,7 +1829,7 @@ class TestSingleStore(Validator):
         )
         self.validate_generation(
             sql="WITH RECURSIVE emp(id, manager) AS ( SELECT 1, NULL UNION ALL SELECT 2, 1 ) SEARCH DEPTH FIRST BY id SET ord SELECT * FROM emp",
-            expected_sql="WITH RECURSIVE emp AS (SELECT 1, NULL UNION ALL SELECT 2, 1) SELECT * FROM emp",
+            expected_sql="WITH RECURSIVE emp(id, manager) AS (SELECT 1, NULL UNION ALL SELECT 2, 1) SELECT * FROM emp",
             error_message="RecursiveWithSearch expression is not supported in SingleStore",
             exp_type=exp.RecursiveWithSearch)
         self.validate_generation(
@@ -1979,6 +1979,7 @@ class TestSingleStore(Validator):
         )
         self.validate_generation(
             sql="INSERT OVERWRITE LOCAL DIRECTORY '/tmp/destination' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM test_table",
+            expected_sql="INSERT INTO LOCAL DIRECTORY '/tmp/destination' ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' SELECT * FROM test_table",
             error_message="INSERT OVERWRITE DIRECTORY query is not supported in SingleStore",
             exp_type=exp.Directory,
             run=False
@@ -2066,9 +2067,9 @@ class TestSingleStore(Validator):
             run=False
         )
         self.validate_generation(
-            sql="INSERT INTO users VALUES (2, 'Alice', '', 1, NOW(), 1) RETURNING id",
-            expected_sql="INSERT INTO users VALUES (2, 'Alice', '', 1, NOW(), 1)",
-            error_message="RETURNING is not supported in SingleStore",
+            sql="INSERT INTO users (id, name, email, age, signup_date, is_active) VALUES (2, 'Alice', '', 1, NOW(), 1) RETURNING id",
+            expected_sql="INSERT INTO users (id, name, email, age, signup_date, is_active) VALUES (2, 'Alice', '', 1, NOW(), 1)",
+            error_message="Argument 'returning' is not supported for expression 'Insert' when targeting SingleStore.",
             exp_type=exp.Returning,
         )
         self.validate_generation(
