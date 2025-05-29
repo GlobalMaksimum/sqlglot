@@ -3467,4 +3467,3 @@ class TestSingleStore(Validator):
             error_message="Unsupported property noprimaryindexproperty",
             exp_type=exp.NoPrimaryIndexProperty
         )
-       
