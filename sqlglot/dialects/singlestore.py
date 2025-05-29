@@ -258,7 +258,6 @@ class SingleStore(Dialect):
         TRANSFORMS.pop(exp.PivotAny)
         TRANSFORMS.pop(exp.Stream)
         TRANSFORMS.pop(exp.AnalyzeColumns)
-        TRANSFORMS.pop(exp.OnProperty)
 
         UNSIGNED_TYPE_MAPPING = {
             exp.DataType.Type.UBIGINT: "BIGINT",
