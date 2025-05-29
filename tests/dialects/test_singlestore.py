@@ -1908,14 +1908,14 @@ class TestSingleStore(Validator):
         )
         self.validate_generation(
             sql="CREATE TABLE tab ( d DateTime, a Int ) ENGINE = MergeTree PARTITION BY toYYYYMM(d) ORDER BY d TTL d + INTERVAL 1 MONTH DELETE, d + INTERVAL 1 WEEK TO VOLUME 'aaa', d + INTERVAL 2 WEEK TO DISK 'bbb'",
-            expected_sql="CREATE TABLE tab (d DATETIME, a INT) ENGINE=MergeTree ORDER BY d TTL d + INTERVAL '1' MONTH DELETE, d + INTERVAL '1' WEEK TO VOLUME + INTERVAL 'aaa', d + INTERVAL '2' WEEK TO DISK + INTERVAL 'bbb'  (PARTITIONED_BY=TOYYYYMM(d))",
+            expected_sql="CREATE TABLE tab (d DATETIME, a INT) TTL d + INTERVAL '1' MONTH DELETE, d + INTERVAL '1' WEEK TO VOLUME + INTERVAL 'aaa', d + INTERVAL '2' WEEK TO DISK + INTERVAL 'bbb'  (PARTITIONED_BY=TOYYYYMM(d))",
             error_message="TTLs are not supported in SingleStore",
             exp_type=exp.MergeTreeTTLAction,
             run=False
         )
         self.validate_generation(
             sql="CREATE TABLE tab ( d DateTime, a Int ) ENGINE = MergeTree PARTITION BY toYYYYMM(d) ORDER BY d TTL d + INTERVAL 1 MONTH DELETE, d + INTERVAL 1 WEEK TO VOLUME 'aaa', d + INTERVAL 2 WEEK TO DISK 'bbb'",
-            expected_sql="CREATE TABLE tab (d DATETIME, a INT) ENGINE=MergeTree ORDER BY d TTL d + INTERVAL '1' MONTH DELETE, d + INTERVAL '1' WEEK TO VOLUME + INTERVAL 'aaa', d + INTERVAL '2' WEEK TO DISK + INTERVAL 'bbb'  (PARTITIONED_BY=TOYYYYMM(d))",
+            expected_sql="CREATE TABLE tab (d DATETIME, a INT) TTL d + INTERVAL '1' MONTH DELETE, d + INTERVAL '1' WEEK TO VOLUME + INTERVAL 'aaa', d + INTERVAL '2' WEEK TO DISK + INTERVAL 'bbb'  (PARTITIONED_BY=TOYYYYMM(d))",
             error_message="TTLs are not supported in SingleStore",
             exp_type=exp.MergeTreeTTL,
             run=False
@@ -1939,7 +1939,7 @@ class TestSingleStore(Validator):
             exp_type=exp.Constraint)
         self.validate_generation(
             sql="EXPORT DATA OPTIONS( uri='gs://bucket/folder/*.csv', format='CSV', overwrite=true, header=true, field_delimiter=';') AS SELECT field1, field2 FROM mydataset.table1 ORDER BY field1 LIMIT 10",
-            expected_sql="EXPORT DATA  (uri='gs://bucket/folder/*.csv', FORMAT='CSV', overwrite=TRUE, header=TRUE, field_delimiter=';') AS SELECT field1, field2 FROM mydataset.table1 ORDER BY field1 LIMIT 10",
+            expected_sql="EXPORT DATA  (uri='gs://bucket/folder/*.csv', overwrite=TRUE, header=TRUE, field_delimiter=';') AS SELECT field1, field2 FROM mydataset.table1 ORDER BY field1 LIMIT 10",
             exp_type=exp.Export,
             from_dialect="bigquery",
             run=False
@@ -2065,8 +2065,8 @@ class TestSingleStore(Validator):
 
         self.validate_generation(
             sql="SELECT JSON_VALUE(JSON '{}', 'a' NULL ON ERROR)",
-            expected_sql="SELECT JSON_VALUE(PARSE_JSON('{}'), 'a')",
-            error_message="Setting on empty or on error behaviour for JSON functions is not supported in SingleStore",
+            expected_sql="SELECT JSON_EXTRACT_STRING(PARSE_JSON('{}'), 'a')",
+            error_message="Argument 'on_condition' is not supported for expression 'JSONValue' when targeting SingleStore.",
             exp_type=exp.OnCondition,
             run=False
         )
@@ -2238,7 +2238,8 @@ class TestSingleStore(Validator):
         )
         self.validate_generation(
             sql="CREATE TAG cost_center ALLOWED_VALUES 'a', 'b'",
-            error_message="TAGs are not supported in SingleStore",
+            expected_sql="CREATE TAG cost_center",
+            error_message="Unsupported property allowedvaluesproperty",
             exp_type=exp.AllowedValuesProperty,
             from_dialect="snowflake",
             run=False
@@ -2269,9 +2270,9 @@ class TestSingleStore(Validator):
         )
         self.validate_generation(
             sql="CREATE EXTERNAL TABLE family (id INT, name STRING) ROW FORMAT SERDE 'com.ly.spark.serde.SerDeExample' STORED AS INPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleInputFormat' OUTPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleOutputFormat' LOCATION '/tmp/family/'",
-            expected_sql="CREATE EXTERNAL TABLE family (id INT, name TEXT) None='com.ly.spark.serde.SerDeExample' LOCATION '/tmp/family/'  (FORMAT=INPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleInputFormat' OUTPUTFORMAT 'com.ly.spark.example.serde.io.SerDeExampleOutputFormat')",
+            expected_sql="CREATE EXTERNAL TABLE family (id INT, name TEXT) None='com.ly.spark.serde.SerDeExample'",
             from_dialect="spark2",
-            error_message="INPUTFORMAT and OUTPUTFORMAT clauses are not supported in SingleStore",
+            error_message="Unsupported property fileformatproperty",
             exp_type=exp.InputOutputFormat,
             run=False
         )
@@ -3181,3 +3182,289 @@ class TestSingleStore(Validator):
             sql="SELECT * FROM orders, LATERAL (SELECT * FROM events WHERE events.user_id = orders.user_id)",
             exp_type=exp.Join,
         )
+
+    def test_properties_generation(self):
+        self.validate_generation(
+            sql="CREATE ALGORITHM=MERGE TABLE AlgorithmProperty (id INT)",
+            expected_sql="CREATE TABLE AlgorithmProperty (id INT)",
+            error_message="Unsupported property algorithmproperty",
+            exp_type=exp.AlgorithmProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE AutoIncrementProperty (id INT) AUTO_INCREMENT=2",
+            exp_type=exp.AutoIncrementProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE AutoRefreshProperty (id INT) AUTO REFRESH YES",
+            expected_sql="CREATE TABLE AutoRefreshProperty (id INT)",
+            error_message="Unsupported property autorefresh",
+            exp_type=exp.AutoRefreshProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE BackupProperty (id INT) BACKUP YES",
+            expected_sql="CREATE TABLE BackupProperty (id INT)",
+            error_message="Unsupported property backup",
+            exp_type=exp.BackupProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE BlockCompressionProperty BLOCKCOMPRESSION=NEVER (id INT)",
+            expected_sql="CREATE TABLE BlockCompressionProperty (id INT)",
+            error_message="Unsupported property blockcompression",
+            exp_type=exp.BlockCompressionProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE CharacterSetProperty (name VARCHAR(100)) CHARACTER SET=utf8mb4",
+            exp_type=exp.CharacterSetProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE ChecksumProperty CHECKSUM=ON (id INT)",
+            expected_sql="CREATE TABLE ChecksumProperty (id INT)",
+            error_message="Unsupported property checksum",
+            exp_type=exp.ChecksumProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE CollateProperty (name VARCHAR(100)) COLLATE=utf8mb4_general_ci",
+            exp_type=exp.CollateProperty,
+        )
+        self.validate_generation(
+            sql="CREATE TABLE CopyGrantsProperty (id INT) COPY GRANTS",
+            expected_sql="CREATE TABLE CopyGrantsProperty (id INT)",
+            error_message="Unsupported property copygrants",
+            exp_type=exp.CopyGrantsProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE Cluster (id INT) CLUSTER BY id",
+            expected_sql="CREATE TABLE Cluster (id INT)",
+            error_message="Unsupported property cluster",
+            exp_type=exp.Cluster
+        )
+        self.validate_generation(
+            sql="CREATE TABLE ClusteredByProperty (id INT) CLUSTERED BY (id) INTO 10 BUCKETS",
+            expected_sql="CREATE TABLE ClusteredByProperty (id INT)",
+            error_message="Unsupported property clusteredby",
+            exp_type=exp.ClusteredByProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DistributedByProperty (id INT) DISTRIBUTED BY RANDOM BUCKETS 10",
+            expected_sql="CREATE TABLE DistributedByProperty (id INT)",
+            error_message="Unsupported property distributedby",
+            exp_type=exp.DistributedByProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DuplicateKeyProperty (id INT) DUPLICATE KEY (id)",
+            expected_sql="CREATE TABLE DuplicateKeyProperty (id INT)",
+            error_message="Unsupported property duplicatekey",
+            exp_type=exp.DuplicateKeyProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DataBlocksizeProperty MINIMUM DATABLOCKSIZE (id INT)",
+            expected_sql="CREATE TABLE DataBlocksizeProperty (id INT)",
+            error_message="Unsupported property datablocksize",
+            exp_type=exp.DataBlocksizeProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DataDeletionProperty (id INT) DATA_DELETION=ON",
+            expected_sql="CREATE TABLE DataDeletionProperty (id INT)",
+            error_message="Unsupported property datadeletion",
+            exp_type=exp.DataDeletionProperty
+        )
+        self.validate_generation(
+            sql="CREATE DEFINER=admin@host TABLE DefinerProperty (id INT)",
+            expected_sql="CREATE TABLE DefinerProperty (id INT)",
+            error_message="Unsupported property definer",
+            exp_type=exp.DefinerProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DictRange (id INT) LIFETIME(MIN 10 MAX 20)",
+            expected_sql="CREATE TABLE DictRange (id INT)",
+            error_message="Unsupported property dictrange",
+            exp_type=exp.DictRange
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DictProperty (id INT) LAYOUT (a)",
+            expected_sql="CREATE TABLE DictProperty (id INT)",
+            error_message="Unsupported property dict",
+            exp_type=exp.DictProperty
+        )
+        self.validate_generation(
+            sql="CREATE DYNAMIC TABLE DynamicProperty (id INT)",
+            expected_sql="CREATE TABLE DynamicProperty (id INT)",
+            error_message="Unsupported property dynamic",
+            exp_type=exp.DynamicProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DistKeyProperty (id INT) DISTKEY(id)",
+            expected_sql="CREATE TABLE DistKeyProperty (id INT)",
+            error_message="Unsupported property distkey",
+            exp_type=exp.DistKeyProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE DistStyleProperty (id INT) DISTSTYLE EVEN",
+            expected_sql="CREATE TABLE DistStyleProperty (id INT)",
+            error_message="Unsupported property diststyle",
+            exp_type=exp.DistStyleProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE EmptyProperty (id INT) EMPTY",
+            expected_sql="CREATE TABLE EmptyProperty (id INT)",
+            error_message="Unsupported property empty",
+            exp_type=exp.EmptyProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE EncodeProperty (bar INT, gen_col INT) FORMAT upsert ENCODE AVRO ( schema.registry = 'http://message_queue:8081' )",
+            expected_sql="CREATE TABLE EncodeProperty (bar INT, gen_col INT)",
+            error_message="Unsupported property encode",
+            from_dialect="risingwave",
+            exp_type=exp.EncodeProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE EngineProperty (id INT) ENGINE = Columnstore",
+            expected_sql="CREATE TABLE EngineProperty (id INT)",
+            error_message="Unsupported property engine",
+            exp_type=exp.EngineProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE ExecuteAsProperty (id INT) EXECUTE AS 'admin'",
+            expected_sql="CREATE TABLE ExecuteAsProperty (id INT)",
+            error_message="Unsupported property executeas",
+            exp_type=exp.ExecuteAsProperty
+        )
+        self.validate_generation(
+            sql="CREATE EXTERNAL FUNCTION db.some_func(a INT)",
+            exp_type=exp.ExternalProperty,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE FallbackProperty NO FALLBACK (id INT)",
+            expected_sql="CREATE TABLE FallbackProperty (id INT)",
+            error_message="Unsupported property fallback",
+            exp_type=exp.FallbackProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE FileFormatProperty (id INT) FORMAT=PARQUET",
+            expected_sql="CREATE TABLE FileFormatProperty (id INT)",
+            error_message="Unsupported property fileformat",
+            exp_type=exp.FileFormatProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE FreespaceProperty FREESPACE = 25 (id INT)",
+            expected_sql="CREATE TABLE FreespaceProperty (id INT)",
+            error_message="Unsupported property freespace",
+            exp_type=exp.FreespaceProperty
+        )
+        self.validate_generation(
+            sql="CREATE GLOBAL TABLE GlobalProperty (id INT)",
+            expected_sql="CREATE TABLE GlobalProperty (id INT)",
+            error_message="Unsupported property global",
+            exp_type=exp.GlobalProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE HeapProperty (id INT) HEAP",
+            expected_sql="CREATE TABLE HeapProperty (id INT)",
+            error_message="Unsupported property heap",
+            exp_type=exp.HeapProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE InheritsProperty (id INT) INHERITS (base_table)",
+            expected_sql="CREATE TABLE InheritsProperty (id INT)",
+            error_message="Unsupported property inherits",
+            exp_type=exp.InheritsProperty
+        )
+        self.validate_generation(
+            sql="CREATE ICEBERG TABLE IcebergProperty (id INT)",
+            expected_sql="CREATE TABLE IcebergProperty (id INT)",
+            error_message="Unsupported property iceberg",
+            exp_type=exp.IcebergProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE IncludeProperty (id INT) INCLUDE extra_column",
+            expected_sql="CREATE TABLE IncludeProperty (id INT)",
+            from_dialect="risingwave",
+            error_message="Unsupported property include",
+            exp_type=exp.IncludeProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE InputModelProperty (id INT) INPUT(a INT)",
+            expected_sql="CREATE TABLE InputModelProperty (id INT)",
+            error_message="Unsupported property inputmodel",
+            exp_type=exp.InputModelProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE IsolatedLoadingProperty WITH ISOLATED LOADING (id INT)",
+            expected_sql="CREATE TABLE IsolatedLoadingProperty (id INT)",
+            error_message="Unsupported property isolatedloading",
+            exp_type=exp.IsolatedLoadingProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE JournalProperty NO JOURNAL (id INT)",
+            expected_sql="CREATE TABLE JournalProperty (id INT)",
+            error_message="Unsupported property journal",
+            exp_type=exp.JournalProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE LanguageProperty (id INT) LANGUAGE SQL",
+            expected_sql="CREATE TABLE LanguageProperty (id INT)",
+            error_message="Unsupported property language",
+            exp_type=exp.LanguageProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE LikeProperty LIKE users",
+            expected_sql="CREATE TABLE LikeProperty LIKE users",
+            exp_type=exp.LikeProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE LocationProperty (id INT) LOCATION = 's3://bucket'",
+            expected_sql="CREATE TABLE LocationProperty (id INT)",
+            error_message="Unsupported property location",
+            exp_type=exp.LocationProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE LockProperty (id INT) LOCK = EXCLUSIVE",
+            expected_sql="CREATE TABLE LockProperty (id INT)",
+            error_message="Unsupported property lock",
+            exp_type=exp.LockProperty
+        )
+        self.validate_generation(
+            sql="CREATE VIEW LockingProperty AS LOCKING ROW FOR ACCESS SELECT * FROM users",
+            from_dialect="teradata",
+            expected_sql="CREATE VIEW LockingProperty AS SELECT * FROM users",
+            error_message="Unsupported property locking",
+            exp_type=exp.LockingProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE LogProperty LOG (id INT)",
+            expected_sql="CREATE TABLE LogProperty (id INT)",
+            error_message="Unsupported property log",
+            exp_type=exp.LogProperty
+        )
+        self.validate_generation(
+            sql="CREATE MATERIALIZED TABLE MaterializedProperty (id INT)",
+            expected_sql="CREATE TABLE MaterializedProperty (id INT)",
+            error_message="Unsupported property materialized",
+            exp_type=exp.MaterializedProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE MergeBlockRatioProperty DEFAULT MERGEBLOCKRATIO (id INT)",
+            expected_sql="CREATE TABLE MergeBlockRatioProperty (id INT)",
+            error_message="Unsupported property mergeblockratio",
+            exp_type=exp.MergeBlockRatioProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE OnCommitProperty AS SELECT * FROM users ON COMMIT DELETE ROWS",
+            expected_sql="CREATE TABLE OnCommitProperty AS SELECT * FROM users",
+            error_message="Unsupported property oncommit",
+            exp_type=exp.OnCommitProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE OrderProperty (id INT) ORDER BY (id)",
+            expected_sql="CREATE TABLE OrderProperty (id INT)",
+            error_message="Unsupported property order",
+            exp_type=exp.Order
+        )
+        self.validate_generation(
+            sql="CREATE TABLE NoPrimaryIndexProperty AS (SELECT * FROM users) NO PRIMARY INDEX",
+            expected_sql="CREATE TABLE NoPrimaryIndexProperty AS SELECT * FROM (SELECT * FROM users)",
+            error_message="Unsupported property noprimaryindexproperty",
+            exp_type=exp.NoPrimaryIndexProperty
+        )
+       
