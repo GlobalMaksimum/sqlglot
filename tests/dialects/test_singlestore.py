@@ -3467,3 +3467,123 @@ class TestSingleStore(Validator):
             error_message="Unsupported property noprimaryindexproperty",
             exp_type=exp.NoPrimaryIndexProperty
         )
+
+    def test_tutu(self):
+        self.validate_generation(
+            sql="CREATE TABLE OutputModelProperty (id INT) OUTPUT(a INT)",
+            expected_sql="CREATE TABLE OutputModelProperty (id INT)",
+            error_message="Unsupported property outputmodel",
+            exp_type=exp.OutputModelProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE PartitionedByProperty (id INT) WITH (PARTITIONED BY (id))",
+            expected_sql="CREATE TABLE PartitionedByProperty (id INT)",
+            error_message="Unsupported property partitionedby",
+            exp_type=exp.PartitionedByProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE PartitionedOfProperty (id INT) PARTITION OF base_table DEFAULT",
+            expected_sql="CREATE TABLE PartitionedOfProperty (id INT)",
+            error_message="Unsupported property partitionedof",
+            exp_type=exp.PartitionedOfProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE PrimaryKey (id INT) PRIMARY KEY (id)",
+            expected_sql="CREATE TABLE PrimaryKey (id INT)",
+            error_message="Unsupported property primarykey",
+            exp_type=exp.PrimaryKey
+        )
+        self.validate_generation(
+            sql="CREATE TABLE Property (id INT) WITH (FOO = 'bar')",
+            expected_sql="CREATE TABLE Property (id INT)",
+            error_message="Unsupported property property",
+            exp_type=exp.Property
+        )
+        self.validate_generation(
+            sql="CREATE TABLE RemoteWithConnectionModelProperty (id INT) REMOTE WITH CONNECTION db.user",
+            expected_sql="CREATE TABLE RemoteWithConnectionModelProperty (id INT)",
+            error_message="Unsupported property remotewithconnectionmodel",
+            exp_type=exp.RemoteWithConnectionModelProperty
+        )
+        self.validate_generation(
+            sql="CREATE FUNCTION ReturnsProperty(id INT) RETURNS INT",
+            expected_sql="CREATE FUNCTION ReturnsProperty(id INT) RETURNS INT",
+            exp_type=exp.ReturnsProperty,
+            run=False
+        )
+        self.validate_generation(
+            sql="CREATE TABLE RowFormatProperty (id INT) ROW_FORMAT=COMPRESSED",
+            expected_sql="CREATE TABLE RowFormatProperty (id INT)",
+            error_message="Unsupported property rowformat",
+            exp_type=exp.RowFormatProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE RowFormatDelimitedProperty (id INT) ROW FORMAT DELIMITED",
+            expected_sql="CREATE TABLE RowFormatDelimitedProperty (id INT)",
+            error_message="Unsupported property rowformatdelimited",
+            exp_type=exp.RowFormatDelimitedProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE RowFormatSerdeProperty (id INT) ROW FORMAT SERDE 'serde.class'",
+            expected_sql="CREATE TABLE RowFormatSerdeProperty (id INT)",
+            error_message="Unsupported property rowformatserde",
+            exp_type=exp.RowFormatSerdeProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SampleProperty (id INT) SAMPLE BY (id)",
+            expected_sql="CREATE TABLE SampleProperty (id INT)",
+            error_message="Unsupported property sample",
+            exp_type=exp.SampleProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SchemaCommentProperty (id INT) COMMENT='table comment'",
+            exp_type=exp.SchemaCommentProperty
+        )
+        self.validate_generation(
+            sql="CREATE SECURE TABLE SecureProperty (id INT)",
+            expected_sql="CREATE TABLE SecureProperty (id INT)",
+            error_message="Unsupported property secure",
+            exp_type=exp.SecureProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SecurityProperty (id INT) SECURITY INVOKER",
+            expected_sql="CREATE TABLE SecurityProperty (id INT)",
+            error_message="Unsupported property security",
+            exp_type=exp.SecurityProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SerdePropertiesTable (id INT) WITH SERDEPROPERTIES ('property' = 'value')",
+            expected_sql="CREATE TABLE SerdePropertiesTable (id INT)",
+            from_dialect="hive",
+            error_message="Unsupported property serdeproperties",
+            exp_type=exp.SerdeProperties
+        )
+        self.validate_generation(
+            sql="SET @a = 1",
+            exp_type=exp.Set
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SettingsProperty (id INT) SETTINGS ('k' = 'v')",
+            expected_sql="CREATE TABLE SettingsProperty (id INT)",
+            error_message="Unsupported property settings",
+            exp_type=exp.SettingsProperty
+        )
+        self.validate_generation(
+            sql="CREATE SET TABLE SetProperty (id INT)",
+            expected_sql="CREATE TABLE SetProperty (id INT)",
+            error_message="Unsupported property setproperty",
+            exp_type=exp.SetProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SetConfigProperty (id INT) SET NULL(id)",
+            expected_sql="CREATE TABLE SetConfigProperty (id INT)",
+            error_message="Unsupported property setconfig",
+            from_dialect="postgres",
+            exp_type=exp.SetConfigProperty
+        )
+        self.validate_generation(
+            sql="CREATE TABLE SharingProperty AS (SELECT * FROM users) SHARING='PUBLIC'",
+            expected_sql="CREATE TABLE SharingProperty AS SELECT * FROM (SELECT * FROM users)",
+            error_message="Unsupported property sharing",
+            exp_type=exp.SharingProperty
+        )
