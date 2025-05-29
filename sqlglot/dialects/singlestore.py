@@ -443,26 +443,27 @@ class SingleStore(Dialect):
             exp.OnProperty: exp.Properties.Location.UNSUPPORTED,
             exp.OnCommitProperty: exp.Properties.Location.UNSUPPORTED,
             exp.Order: exp.Properties.Location.UNSUPPORTED,
-            exp.OutputModelProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.PartitionedByProperty: exp.Properties.Location.POST_WITH,
-            exp.PartitionedOfProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.PrimaryKey: exp.Properties.Location.POST_SCHEMA,
-            exp.Property: exp.Properties.Location.POST_WITH,
-            exp.RemoteWithConnectionModelProperty: exp.Properties.Location.POST_SCHEMA,
+            exp.OutputModelProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.PartitionedByProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.PartitionedOfProperty: exp.Properties.Location.UNSUPPORTED,
+            # TODO: Move PK into Schema
+            exp.PrimaryKey: exp.Properties.Location.UNSUPPORTED,
+            exp.Property: exp.Properties.Location.UNSUPPORTED,
+            exp.RemoteWithConnectionModelProperty: exp.Properties.Location.UNSUPPORTED,
             exp.ReturnsProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.RowFormatProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.RowFormatDelimitedProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.RowFormatSerdeProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SampleProperty: exp.Properties.Location.POST_SCHEMA,
+            exp.RowFormatProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.RowFormatDelimitedProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.RowFormatSerdeProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SampleProperty: exp.Properties.Location.UNSUPPORTED,
             exp.SchemaCommentProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SecureProperty: exp.Properties.Location.POST_CREATE,
-            exp.SecurityProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SerdeProperties: exp.Properties.Location.POST_SCHEMA,
-            exp.Set: exp.Properties.Location.POST_SCHEMA,
-            exp.SettingsProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SetProperty: exp.Properties.Location.POST_CREATE,
-            exp.SetConfigProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SharingProperty: exp.Properties.Location.POST_EXPRESSION,
+            exp.SecureProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SecurityProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SerdeProperties: exp.Properties.Location.UNSUPPORTED,
+            exp.Set: exp.Properties.Location.UNSUPPORTED,
+            exp.SettingsProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SetProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SetConfigProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SharingProperty: exp.Properties.Location.UNSUPPORTED,
             exp.SequenceProperties: exp.Properties.Location.POST_EXPRESSION,
             exp.SortKeyProperty: exp.Properties.Location.POST_SCHEMA,
             exp.SqlReadWriteProperty: exp.Properties.Location.POST_SCHEMA,
@@ -3072,7 +3073,6 @@ class SingleStore(Dialect):
             self.unsupported("FINAL clause is not supported in SingleStore")
             return self.sql(expression, 'this')
 
-        @unsupported_args("siblings")
         def order_sql(self, expression: exp.Order, flat: bool = False) -> str:
             this = self.sql(expression, "this")
             this = f"{this} " if this else this
