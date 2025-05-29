@@ -3467,8 +3467,6 @@ class TestSingleStore(Validator):
             error_message="Unsupported property noprimaryindexproperty",
             exp_type=exp.NoPrimaryIndexProperty
         )
-
-    def test_tutu(self):
         self.validate_generation(
             sql="CREATE TABLE OutputModelProperty (id INT) OUTPUT(a INT)",
             expected_sql="CREATE TABLE OutputModelProperty (id INT)",
