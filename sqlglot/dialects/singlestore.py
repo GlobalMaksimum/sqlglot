@@ -258,6 +258,8 @@ class SingleStore(Dialect):
         TRANSFORMS.pop(exp.PivotAny)
         TRANSFORMS.pop(exp.Stream)
         TRANSFORMS.pop(exp.AnalyzeColumns)
+        TRANSFORMS.pop(exp.WithSchemaBindingProperty)
+        TRANSFORMS.pop(exp.ViewAttributeProperty)
 
         UNSIGNED_TYPE_MAPPING = {
             exp.DataType.Type.UBIGINT: "BIGINT",
@@ -408,7 +410,7 @@ class SingleStore(Dialect):
             exp.DuplicateKeyProperty: exp.Properties.Location.UNSUPPORTED,
             exp.DataBlocksizeProperty: exp.Properties.Location.UNSUPPORTED,
             exp.DataDeletionProperty: exp.Properties.Location.UNSUPPORTED,
-            exp.DefinerProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.DefinerProperty: exp.Properties.Location.POST_SCHEMA,
             exp.DictRange: exp.Properties.Location.UNSUPPORTED,
             exp.DictProperty: exp.Properties.Location.UNSUPPORTED,
             exp.DynamicProperty: exp.Properties.Location.UNSUPPORTED,
@@ -464,30 +466,31 @@ class SingleStore(Dialect):
             exp.SetProperty: exp.Properties.Location.UNSUPPORTED,
             exp.SetConfigProperty: exp.Properties.Location.UNSUPPORTED,
             exp.SharingProperty: exp.Properties.Location.UNSUPPORTED,
-            exp.SequenceProperties: exp.Properties.Location.POST_EXPRESSION,
-            exp.SortKeyProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SqlReadWriteProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.SqlSecurityProperty: exp.Properties.Location.POST_CREATE,
-            exp.StabilityProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.StorageHandlerProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.StreamingTableProperty: exp.Properties.Location.POST_CREATE,
-            exp.StrictProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.Tags: exp.Properties.Location.POST_WITH,
+            exp.SequenceProperties: exp.Properties.Location.UNSUPPORTED,
+            # TODO: Move into schema
+            exp.SortKeyProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SqlReadWriteProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.SqlSecurityProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.StabilityProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.StorageHandlerProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.StreamingTableProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.StrictProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.Tags: exp.Properties.Location.UNSUPPORTED,
             exp.TemporaryProperty: exp.Properties.Location.POST_CREATE,
-            exp.ToTableProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.TransientProperty: exp.Properties.Location.POST_CREATE,
-            exp.TransformModelProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.MergeTreeTTL: exp.Properties.Location.POST_SCHEMA,
-            exp.UnloggedProperty: exp.Properties.Location.POST_CREATE,
-            exp.UsingTemplateProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.ViewAttributeProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.VolatileProperty: exp.Properties.Location.POST_CREATE,
-            exp.WithDataProperty: exp.Properties.Location.POST_EXPRESSION,
-            exp.WithJournalTableProperty: exp.Properties.Location.POST_NAME,
-            exp.WithProcedureOptions: exp.Properties.Location.POST_SCHEMA,
-            exp.WithSchemaBindingProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.WithSystemVersioningProperty: exp.Properties.Location.POST_SCHEMA,
-            exp.ForceProperty: exp.Properties.Location.POST_CREATE,
+            exp.ToTableProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.TransientProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.TransformModelProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.MergeTreeTTL: exp.Properties.Location.UNSUPPORTED,
+            exp.UnloggedProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.UsingTemplateProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.ViewAttributeProperty: exp.Properties.Location.POST_CREATE,
+            exp.VolatileProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.WithDataProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.WithJournalTableProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.WithProcedureOptions: exp.Properties.Location.UNSUPPORTED,
+            exp.WithSchemaBindingProperty: exp.Properties.Location.POST_CREATE,
+            exp.WithSystemVersioningProperty: exp.Properties.Location.UNSUPPORTED,
+            exp.ForceProperty: exp.Properties.Location.UNSUPPORTED,
         }
 
         # https://docs.singlestore.com/cloud/reference/sql-reference/restricted-keywords/list-of-restricted-keywords/
@@ -3487,6 +3490,18 @@ class SingleStore(Dialect):
                 op_sql = f"{op_sql} JOIN" if op_sql else "JOIN"
 
             return f"{self.seg(op_sql)} {this_sql}{on_sql}"
+
+        def withschemabindingproperty_sql(self, expression: exp.WithSchemaBindingProperty) -> str:
+            if isinstance(expression.this, exp.Var) and expression.this.this == "BINDING":
+                return "SCHEMA_BINDING=ON"
+            self.unsupported("Unsupported property withschemabinding")
+            return ""
+
+        def viewattributeproperty_sql(self, expression: exp.ViewAttributeProperty) -> str:
+            if expression.this == "SCHEMABINDING":
+                return "SCHEMA_BINDING=ON"
+            self.unsupported("Unsupported property viewattribute")
+            return ""
 
         def create_sql(self, expression: exp.Create) -> str:
             kind = self.sql(expression, "kind")
