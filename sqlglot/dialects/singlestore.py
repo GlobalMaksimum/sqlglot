@@ -134,8 +134,8 @@ class SingleStore(Dialect):
             exp.ToChar: lambda self, e: self.function_fallback_sql(e),
             exp.Chr: rename_func("CHAR"),
             exp.Contains: rename_func("INSTR"),
-            exp.CurrentSchema: rename_func("SCHEMA"),
-            exp.DateBin: rename_func("TIME_BUCKET"),
+            # exp.CurrentSchema: rename_func("SCHEMA"),
+            # exp.DateBin: rename_func("TIME_BUCKET"),
             exp.DatetimeAdd: rename_func("DATE_ADD"),
             exp.DatetimeSub: rename_func("DATE_SUB"),
             exp.DatetimeDiff: rename_func("TIMESTAMPDIFF"),
@@ -155,8 +155,8 @@ class SingleStore(Dialect):
             exp.DiToDate: lambda self,
                                  e: f"STR_TO_DATE({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT})",
             exp.LowerHex: lambda self, e: f"LOWER(HEX({self.sql(e, 'this')}))",
-            exp.IsAscii: lambda self,
-                                e: f"({self.sql(e, 'this')} RLIKE '^[\x00-\x7F]*$')",
+            # exp.IsAscii: lambda self,
+            #                     e: f"({self.sql(e, 'this')} RLIKE '^[\x00-\x7F]*$')",
             exp.Int64: lambda self, e: f"{self.sql(e, 'this')} :> BIGINT",
             exp.JSONFormat: rename_func("JSON_PRETTY"),
             exp.MD5Digest: lambda self, e: self.func("UNHEX",
@@ -257,7 +257,7 @@ class SingleStore(Dialect):
         TRANSFORMS.pop(exp.IntervalSpan)
         TRANSFORMS.pop(exp.PivotAny)
         TRANSFORMS.pop(exp.Stream)
-        TRANSFORMS.pop(exp.AnalyzeColumns)
+        # TRANSFORMS.pop(exp.AnalyzeColumns)
         TRANSFORMS.pop(exp.WithSchemaBindingProperty)
         TRANSFORMS.pop(exp.ViewAttributeProperty)
 
@@ -268,7 +268,8 @@ class SingleStore(Dialect):
             exp.DataType.Type.USMALLINT: "SMALLINT",
             exp.DataType.Type.UTINYINT: "TINYINT",
             exp.DataType.Type.UDECIMAL: "DECIMAL",
-            exp.DataType.Type.UDOUBLE: "DOUBLE",
+            exp.DataType.Type.DOUBLE: "DOUBLE",
+            # exp.DataType.Type.UDOUBLE: "DOUBLE",
         }
 
         UNSUPPORTED_TYPE_MAPPING = {
@@ -279,7 +280,7 @@ class SingleStore(Dialect):
             exp.DataType.Type.BPCHAR: "TEXT",
             exp.DataType.Type.DATEMULTIRANGE: "TEXT",
             exp.DataType.Type.DATERANGE: "TEXT",
-            exp.DataType.Type.DYNAMIC: "TEXT",
+            # exp.DataType.Type.DYNAMIC: "TEXT",
             exp.DataType.Type.HLLSKETCH: "TEXT",
             exp.DataType.Type.HSTORE: "TEXT",
             exp.DataType.Type.IMAGE: "BLOB",
@@ -301,7 +302,7 @@ class SingleStore(Dialect):
             exp.DataType.Type.MONEY: "DECIMAL(15,4)",
             exp.DataType.Type.NAME: "TEXT",
             exp.DataType.Type.NESTED: "TEXT",
-            exp.DataType.Type.NOTHING: "INT",
+            # exp.DataType.Type.NOTHING: "INT",
             exp.DataType.Type.NULL: "INT",
             exp.DataType.Type.NUMMULTIRANGE: "TEXT",
             exp.DataType.Type.NUMRANGE: "TEXT",
@@ -339,13 +340,13 @@ class SingleStore(Dialect):
             exp.DataType.Type.BIGINT: "BIGINT",
             exp.DataType.Type.BINARY: "BINARY",
             exp.DataType.Type.BIT: "BIT",
-            exp.DataType.Type.BLOB: "BLOB",
+            # exp.DataType.Type.BLOB: "BLOB",
             exp.DataType.Type.BOOLEAN: "BOOLEAN",
             exp.DataType.Type.CHAR: "CHAR",
             exp.DataType.Type.DATE: "DATE",
             exp.DataType.Type.DATE32: "DATE",
             exp.DataType.Type.DATETIME: "DATETIME",
-            exp.DataType.Type.DATETIME2: "DATETIME",
+            # exp.DataType.Type.DATETIME2: "DATETIME",
             exp.DataType.Type.DATETIME64: "DATETIME",
             exp.DataType.Type.DECIMAL: "DECIMAL",
             exp.DataType.Type.DECIMAL32: "DECIMAL",
@@ -377,7 +378,7 @@ class SingleStore(Dialect):
             exp.DataType.Type.NCHAR: "CHAR",
             exp.DataType.Type.NVARCHAR: "VARCHAR",
             exp.DataType.Type.SET: "SET",
-            exp.DataType.Type.SMALLDATETIME: "DATETIME",
+            # exp.DataType.Type.SMALLDATETIME: "DATETIME",
             exp.DataType.Type.SMALLINT: "SMALLINT",
             exp.DataType.Type.TEXT: "TEXT",
             exp.DataType.Type.TINYBLOB: "TINYBLOB",
@@ -472,7 +473,7 @@ class SingleStore(Dialect):
             exp.SqlReadWriteProperty: exp.Properties.Location.UNSUPPORTED,
             exp.SqlSecurityProperty: exp.Properties.Location.UNSUPPORTED,
             exp.StabilityProperty: exp.Properties.Location.UNSUPPORTED,
-            exp.StorageHandlerProperty: exp.Properties.Location.UNSUPPORTED,
+            # exp.StorageHandlerProperty: exp.Properties.Location.UNSUPPORTED,
             exp.StreamingTableProperty: exp.Properties.Location.UNSUPPORTED,
             exp.StrictProperty: exp.Properties.Location.UNSUPPORTED,
             exp.Tags: exp.Properties.Location.UNSUPPORTED,
@@ -482,7 +483,7 @@ class SingleStore(Dialect):
             exp.TransformModelProperty: exp.Properties.Location.UNSUPPORTED,
             exp.MergeTreeTTL: exp.Properties.Location.UNSUPPORTED,
             exp.UnloggedProperty: exp.Properties.Location.UNSUPPORTED,
-            exp.UsingTemplateProperty: exp.Properties.Location.UNSUPPORTED,
+            # exp.UsingTemplateProperty: exp.Properties.Location.UNSUPPORTED,
             exp.ViewAttributeProperty: exp.Properties.Location.POST_CREATE,
             exp.VolatileProperty: exp.Properties.Location.UNSUPPORTED,
             exp.WithDataProperty: exp.Properties.Location.UNSUPPORTED,
@@ -490,7 +491,7 @@ class SingleStore(Dialect):
             exp.WithProcedureOptions: exp.Properties.Location.UNSUPPORTED,
             exp.WithSchemaBindingProperty: exp.Properties.Location.POST_CREATE,
             exp.WithSystemVersioningProperty: exp.Properties.Location.UNSUPPORTED,
-            exp.ForceProperty: exp.Properties.Location.UNSUPPORTED,
+            # exp.ForceProperty: exp.Properties.Location.UNSUPPORTED,
         }
 
         # https://docs.singlestore.com/cloud/reference/sql-reference/restricted-keywords/list-of-restricted-keywords/
@@ -1737,31 +1738,31 @@ class SingleStore(Dialect):
             return super().bracket_sql(expression)
 
         # TODO: investigate which Clickhouse parametrized/combined functions can be translated to SingleStore
-        def combinedparameterizedagg_sql(self,
-                                         expression: exp.CombinedParameterizedAgg) -> str:
+        # def combinedparameterizedagg_sql(self,
+        #                                  expression: exp.CombinedParameterizedAgg) -> str:
             # https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/quantileGK
             # https://clickhouse.com/docs/sql-reference/aggregate-functions/combinators
-            self.unsupported(
-                "Parametrized aggregate functions are not supported in SingleStore")
-            return super().combinedparameterizedagg_sql(expression)
+        #     self.unsupported(
+        #         "Parametrized aggregate functions are not supported in SingleStore")
+        #     return super().combinedparameterizedagg_sql(expression)
 
-        def parameterizedagg_sql(self, expression: exp.ParameterizedAgg) -> str:
-            # https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/quantileGK
-            self.unsupported(
-                "Parametrized aggregate functions are not supported in SingleStore")
-            return super().parameterizedagg_sql(expression)
+        # def parameterizedagg_sql(self, expression: exp.ParameterizedAgg) -> str:
+        #     # https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/quantileGK
+        #     self.unsupported(
+        #         "Parametrized aggregate functions are not supported in SingleStore")
+        #     return super().parameterizedagg_sql(expression)
 
-        def anonymousaggfunc_sql(self, expression: exp.AnonymousAggFunc) -> str:
-            # https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/quantileGK
-            self.unsupported(
-                "Anonymous aggregate functions are not supported in SingleStore")
-            return super().anonymousaggfunc_sql(expression)
+        # def anonymousaggfunc_sql(self, expression: exp.AnonymousAggFunc) -> str:
+        #     # https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/quantileGK
+        #     self.unsupported(
+        #         "Anonymous aggregate functions are not supported in SingleStore")
+        #     return super().anonymousaggfunc_sql(expression)
 
-        def combinedaggfunc_sql(self, expression: exp.CombinedAggFunc) -> str:
-            # https://clickhouse.com/docs/sql-reference/aggregate-functions/combinators
-            self.unsupported(
-                "Aggregate function combinators are not supported in SingleStore")
-            return super().anonymousaggfunc_sql(expression)
+        # def combinedaggfunc_sql(self, expression: exp.CombinedAggFunc) -> str:
+        #     # https://clickhouse.com/docs/sql-reference/aggregate-functions/combinators
+        #     self.unsupported(
+        #         "Aggregate function combinators are not supported in SingleStore")
+        #     return super().anonymousaggfunc_sql(expression)
 
         def argmin_sql(self, expression: exp.ArgMin) -> str:
             self.unsupported("ARG_MIN function is not supported in SingleStore")
@@ -1793,10 +1794,10 @@ class SingleStore(Dialect):
                 "JSON_OBJECT_AGG function is not supported in SingleStore")
             return super().jsonobjectagg_sql(expression)
 
-        def jsonbobjectagg_sql(self, expression: exp.JSONBObjectAgg) -> str:
-            self.unsupported(
-                "JSONB_OBJECT_AGG function is not supported in SingleStore")
-            return self.function_fallback_sql(expression)
+        # def jsonbobjectagg_sql(self, expression: exp.JSONBObjectAgg) -> str:
+        #     self.unsupported(
+        #         "JSONB_OBJECT_AGG function is not supported in SingleStore")
+        #     return self.function_fallback_sql(expression)
 
         def quantile_sql(self, expression: exp.Quantile) -> str:
             self.unsupported(
@@ -2282,7 +2283,7 @@ class SingleStore(Dialect):
 
             return f"CONCAT(SUBSTRING({text}, 1, {start}-1), {value}, SUBSTRING({text}, {start}+{length}))"
 
-        def unicode_sql(self, expression: exp.Unicode) -> str:
+        def unicode_sql(self, expression: exp.Func) -> str:
             self.unsupported("UNICODE function is not supported in SingleStore")
             return self.function_fallback_sql(expression)
 
@@ -2292,11 +2293,11 @@ class SingleStore(Dialect):
                 "TIMESTAMP_FROM_PARTS function is not supported in SingleStore")
             return self.function_fallback_sql(expression)
 
-        def xmlelement_sql(self,
-                           expression: exp.XMLElement) -> str:
-            self.unsupported(
-                "XMLELEMENT function is not supported in SingleStore")
-            return super().xmlelement_sql(expression)
+        # def xmlelement_sql(self,
+        #                    expression: exp.XMLElement) -> str:
+        #     self.unsupported(
+        #         "XMLELEMENT function is not supported in SingleStore")
+        #     return super().xmlelement_sql(expression)
 
         def xmltable_sql(self,
                          expression: exp.XMLTable) -> str:
@@ -2449,11 +2450,11 @@ class SingleStore(Dialect):
             expressions = self.wrap(expressions)
             return f"{this}{expressions}"
 
-        def recursivewithsearch_sql(self,
-                                    expression: exp.RecursiveWithSearch) -> str:
-            self.unsupported(
-                "RecursiveWithSearch expression is not supported in SingleStore")
-            return ""
+        # def recursivewithsearch_sql(self,
+        #                             expression: exp.RecursiveWithSearch) -> str:
+        #     self.unsupported(
+        #         "RecursiveWithSearch expression is not supported in SingleStore")
+        #     return ""
 
         def projectiondef_sql(self, expression: exp.ProjectionDef) -> str:
             self.unsupported(
@@ -2477,10 +2478,10 @@ class SingleStore(Dialect):
 
             return f"MODIFY COLUMN {this} {dtype}{collate}"
 
-        def alterindex_sql(self, expression: exp.AlterIndex) -> str:
-            self.unsupported(
-                "INVISIBLE INDEXES are not supported in SingleStore")
-            return super().alterindex_sql(expression)
+        # def alterindex_sql(self, expression: exp.AlterIndex) -> str:
+        #     self.unsupported(
+        #         "INVISIBLE INDEXES are not supported in SingleStore")
+        #     return super().alterindex_sql(expression)
 
         def alterdiststyle_sql(self, expression: exp.AlterDistStyle) -> str:
             self.unsupported("ALTER DYSTSTILE is not supported in SingleStore")
@@ -2710,10 +2711,10 @@ class SingleStore(Dialect):
 
         # TODO: implement using INSERT INTO
         # https://docs.singlestore.com/db/v8.9/reference/sql-reference/data-manipulation-language-dml/select/#select-into-gcs
-        def export_sql(self, expression: exp.Export) -> str:
-            self.unsupported(
-                "EXPORT query is not supported in SingleStore")
-            return super().export_sql(expression)
+        # def export_sql(self, expression: exp.Export) -> str:
+        #     self.unsupported(
+        #         "EXPORT query is not supported in SingleStore")
+        #     return super().export_sql(expression)
 
         def check_sql(self, expression: exp.Check) -> str:
             self.unsupported(
@@ -2883,7 +2884,7 @@ class SingleStore(Dialect):
             return f"{op} {this}{alias}{condition}"
 
         @unsupported_args("sample", "joins")
-        def tablefromrows_sql(self, expression: exp.TableFromRows) -> str:
+        def tablefromrows_sql(self, expression: exp.Table) -> str:
             # Copy alias to values
             # This is done to ensure that column names are correctly propagated
             if expression.args.get("alias") and isinstance(expression.this,
@@ -2921,19 +2922,16 @@ class SingleStore(Dialect):
 
             return f"{alias}{columns}"
 
+        @unsupported_args("sample")
         def subquery_sql(self, expression: exp.Subquery,
-                         sep: str = " AS ", wrap: bool = True) -> str:
-            if expression.args.get("sample") is not None:
-                self.unsupported(
-                    "Argument 'sample' is not supported for expression 'subquery' when targeting SingleStore.")
-
+                         sep: str = " AS ") -> str:
             alias = self.sql(expression, "alias")
             alias = f"{sep}{alias}" if alias else ""
 
             pivots = self.expressions(expression, key="pivots", sep="",
                                       flat=True)
-            sql = self.query_modifiers(expression, self.wrap(expression) if wrap else self.sql(expression, "this"),
-                                       alias, pivots)
+            sql = self.query_modifiers(expression, self.wrap(expression), alias,
+                                       pivots)
             return self.prepend_ctes(expression, sql)
 
         @unsupported_args("returning", "overwrite", "alternative",
@@ -3062,9 +3060,9 @@ class SingleStore(Dialect):
 
             return f"{this}{self.seg('LIMIT')} {args_sql}"
 
-        def limitoptions_sql(self, expression: exp.LimitOptions) -> str:
-            self.unsupported("LIMIT options are not supported in SingleStore")
-            return ""
+        # def limitoptions_sql(self, expression: exp.LimitOptions) -> str:
+        #     self.unsupported("LIMIT options are not supported in SingleStore")
+        #     return ""
 
         def matchrecognize_sql(self, expression: exp.MatchRecognize) -> str:
             self.unsupported("MATCH_RECOGNIZE is not supported in SingleStore")
@@ -3110,11 +3108,11 @@ class SingleStore(Dialect):
             self.unsupported("TAGs are not supported in SingleStore")
             return f"ALLOWED_VALUES {self.expressions(expression, flat=True)}"
 
-        def partitionbyrangepropertydynamic_sql(self,
-                                                expression: exp.PartitionByRangePropertyDynamic) -> str:
-            self.unsupported(
-                "PARTITION BY RANGE clause is not supported in SingleStore")
-            return ""
+        # def partitionbyrangepropertydynamic_sql(self,
+        #                                         expression: exp.PartitionByRangePropertyDynamic) -> str:
+        #     self.unsupported(
+        #         "PARTITION BY RANGE clause is not supported in SingleStore")
+        #     return ""
 
         def partitionboundspec_sql(self,
                                    expression: exp.PartitionBoundSpec) -> str:
@@ -3155,9 +3153,9 @@ class SingleStore(Dialect):
             self.unsupported("Historical data is not supported in SingleStore")
             return ""
 
-        def put_sql(self, expression: exp.Put) -> str:
-            self.unsupported("PUT query is not supported in SingleStore")
-            return super().put_sql(expression)
+        # def put_sql(self, expression: exp.Put) -> str:
+        #     self.unsupported("PUT query is not supported in SingleStore")
+        #     return super().put_sql(expression)
 
         @unsupported_args("only", "partition", "version", "sample", "ordinality", "format", "pattern", "rows_from",
                           "changes")
@@ -3231,9 +3229,9 @@ class SingleStore(Dialect):
 
             return f"{self.seg('PIVOT')}({expressions} FOR {fields}{group}){alias}"
 
-        def unpivotcolumns_sql(self, expression: exp.UnpivotColumns) -> str:
-            self.unsupported("UNPIVOT query is not supported in SingleStore")
-            return super().unpivotcolumns_sql(expression)
+        # def unpivotcolumns_sql(self, expression: exp.UnpivotColumns) -> str:
+        #     self.unsupported("UNPIVOT query is not supported in SingleStore")
+        #     return super().unpivotcolumns_sql(expression)
 
         @unsupported_args("except", "replace", "rename")
         def star_sql(self, expression: exp.Star) -> str:
@@ -3241,11 +3239,11 @@ class SingleStore(Dialect):
 
         @unsupported_args("kind", "nested", "values")
         def datatype_sql(self, expression: exp.DataType) -> str:
-            type_value = expression.this
+            type_value:str = expression.this
 
             if type_value in self.UNSUPPORTED_TYPE_MAPPING:
                 self.unsupported(f"Data type {type_value.value} is not supported in SingleStore")
-                return self.UNSUPPORTED_TYPE_MAPPING.get(type_value)
+                return self.UNSUPPORTED_TYPE_MAPPING.get(type_value, type_value)
 
             if (expression.is_type(exp.DataType.Type.VARCHAR)
                     and not expression.expressions
@@ -3329,9 +3327,9 @@ class SingleStore(Dialect):
             self.unsupported("Specifying multiple aliases in parrents is not supported in SingleStore")
             return super().aliases_sql(expression)
 
-        def atindex_sql(self, expression: exp.AtIndex) -> str:
-            self.unsupported("Arrays are not supported in SingleStore")
-            return super().atindex_sql(expression)
+        # def atindex_sql(self, expression: exp.AtIndex) -> str:
+        #     self.unsupported("Arrays are not supported in SingleStore")
+        #     return super().atindex_sql(expression)
 
         def attimezone_sql(self, expression: exp.AtTimeZone) -> str:
             self.unsupported("AT TIME ZONE is not supported in SingleStore")
@@ -3387,9 +3385,9 @@ class SingleStore(Dialect):
             self.unsupported("OPENJSON function is not supported in SingleStore")
             return super().openjsoncolumndef_sql(expression)
 
-        def xmlnamespace_sql(self, expression: exp.XMLNamespace) -> str:
-            self.unsupported("XMLTABLE function is not supported in SingleStore")
-            return super().xmlnamespace_sql(expression)
+        # def xmlnamespace_sql(self, expression: exp.XMLNamespace) -> str:
+        #     self.unsupported("XMLTABLE function is not supported in SingleStore")
+        #     return super().xmlnamespace_sql(expression)
 
         @unsupported_args("on_condition")
         def jsonvalue_sql(self, expression: exp.JSONValue) -> str:
@@ -3403,9 +3401,9 @@ class SingleStore(Dialect):
             else:
                 return res
 
-        def jsonextractquote_sql(self, expression: exp.JSONExtractQuote) -> str:
-            self.unsupported("QUOTES clause is not supported in SingleStore")
-            return ""
+        # def jsonextractquote_sql(self, expression: exp.JSONExtractQuote) -> str:
+        #     self.unsupported("QUOTES clause is not supported in SingleStore")
+        #     return ""
 
         def scoperesolution_sql(self, expression: exp.ScopeResolution) -> str:
             self.unsupported("SCOPE_RESOLUTION is not supported in SingleStore")
@@ -3415,41 +3413,41 @@ class SingleStore(Dialect):
             self.unsupported("STREAM is not supported in SingleStore")
             return f"STREAM {self.sql(expression, 'this')}"
 
-        def whens_sql(self, expression: exp.Whens) -> str:
-            self.unsupported("WHEN MATCHED clause is not supported in SingleStore")
-            return super().whens_sql(expression)
+        # def whens_sql(self, expression: exp.Whens) -> str:
+        #     self.unsupported("WHEN MATCHED clause is not supported in SingleStore")
+        #     return super().whens_sql(expression)
 
-        @unsupported_args("options", "partition", "mode", "properties")
-        def analyze_sql(self, expression: exp.Analyze) -> str:
-            kind = self.sql(expression, "kind")
-            kind = f" {kind}" if kind else ""
-            this = self.sql(expression, "this")
-            this = f" {this}" if this else ""
-            inner_expression = self.sql(expression, "expression")
-            inner_expression = f" {inner_expression}" if inner_expression else ""
-            return f"ANALYZE{kind}{this}{inner_expression}"
+        # @unsupported_args("options", "partition", "mode", "properties")
+        # def analyze_sql(self, expression: exp.Analyze) -> str:
+        #     kind = self.sql(expression, "kind")
+        #     kind = f" {kind}" if kind else ""
+        #     this = self.sql(expression, "this")
+        #     this = f" {this}" if this else ""
+        #     inner_expression = self.sql(expression, "expression")
+        #     inner_expression = f" {inner_expression}" if inner_expression else ""
+        #     return f"ANALYZE{kind}{this}{inner_expression}"
 
-        def analyzestatistics_sql(self, expression: exp.AnalyzeStatistics) -> str:
-            # SingleStore always updates statistic of all columns when running ANALYZE
-            return ""
+        # def analyzestatistics_sql(self, expression: exp.AnalyzeStatistics) -> str:
+        #     # SingleStore always updates statistic of all columns when running ANALYZE
+        #     return ""
 
-        def analyzehistogram_sql(self, expression: exp.AnalyzeHistogram) -> str:
-            columns = self.expressions(expression)
-            return f"COLUMNS {columns} ENABLE"
+        # def analyzehistogram_sql(self, expression: exp.AnalyzeHistogram) -> str:
+        #     columns = self.expressions(expression)
+        #     return f"COLUMNS {columns} ENABLE"
 
-        def analyzelistchainedrows_sql(self, expression: exp.AnalyzeListChainedRows) -> str:
-            self.unsupported("LIST CHAINED ROWS clause is not supported in SingleStore")
-            return ""
+        # def analyzelistchainedrows_sql(self, expression: exp.AnalyzeListChainedRows) -> str:
+        #     self.unsupported("LIST CHAINED ROWS clause is not supported in SingleStore")
+        #     return ""
 
-        def analyzedelete_sql(self, expression: exp.AnalyzeDelete) -> str:
-            return "DROP"
-
-        def analyzevalidate_sql(self, expression: exp.AnalyzeValidate) -> str:
-            self.unsupported("VALIDATE STRUCTURE clause is not supported in SingleStore")
-            return ""
-
-        def analyzecolumns_sql(self, expression: exp.AnalyzeColumns):
-            return "COLUMNS ALL ENABLE"
+        # def analyzedelete_sql(self, expression: exp.AnalyzeDelete) -> str:
+        #     return "DROP"
+ 
+        # def analyzevalidate_sql(self, expression: exp.AnalyzeValidate) -> str:
+        #     self.unsupported("VALIDATE STRUCTURE clause is not supported in SingleStore")
+        #     return ""
+ 
+        # def analyzecolumns_sql(self, expression: exp.AnalyzeColumns):
+        #     return "COLUMNS ALL ENABLE"
 
         # TODO: investigate if MATCH_CONDITION can be translated into SingleStore syntax
         @unsupported_args("global", "match_condition")
@@ -3506,18 +3504,13 @@ class SingleStore(Dialect):
             self.unsupported("Unsupported property viewattribute")
             return ""
 
-        @unsupported_args("concurrently", "refresh", "unique", "clustered")
         def create_sql(self, expression: exp.Create) -> str:
             kind = self.sql(expression, "kind")
             kind = self.dialect.INVERSE_CREATABLE_KIND_MAPPING.get(kind) or kind
             properties = expression.args.get("properties")
             properties_locs = self.locate_properties(properties) if properties else defaultdict()
 
-            if isinstance(expression.this, exp.Schema):
-                indexes = self.expressions(expression, key="indexes", indent=False, sep=" ")
-                this = self.schema_sql(expression.this, indexes)
-            else:
-                this = self.sql(expression, "this")
+            this = self.createable_sql(expression, properties_locs)
 
             properties_sql = ""
             if properties_locs.get(exp.Properties.Location.POST_SCHEMA) or properties_locs.get(
@@ -3541,12 +3534,11 @@ class SingleStore(Dialect):
             begin = " BEGIN" if expression.args.get("begin") else ""
             end = " END" if expression.args.get("end") else ""
 
-            if isinstance(expression.expression, exp.Subquery):
-                expression_sql = self.subquery_sql(expression.expression, " AS ", False)
-            else:
-                expression_sql = self.sql(expression, "expression")
+            expression_sql = self.sql(expression, "expression")
             if expression_sql:
                 expression_sql = f"{begin}{self.sep()}{expression_sql}{end}"
+                if isinstance(expression.expression, exp.Subquery):
+                    expression_sql = f" SELECT * FROM{expression_sql}"
 
                 if self.CREATE_FUNCTION_RETURN_AS or not isinstance(expression.expression, exp.Return):
                     postalias_props_sql = ""
@@ -3560,7 +3552,29 @@ class SingleStore(Dialect):
                     postalias_props_sql = f" {postalias_props_sql}" if postalias_props_sql else ""
                     expression_sql = f" AS{postalias_props_sql}{expression_sql}"
 
+            postindex_props_sql = ""
+            if properties_locs.get(exp.Properties.Location.POST_INDEX):
+                postindex_props_sql = self.properties(
+                    exp.Properties(expressions=properties_locs[exp.Properties.Location.POST_INDEX]),
+                    wrapped=False,
+                    prefix=" ",
+                )
+
+            indexes = self.expressions(expression, key="indexes", indent=False, sep=" ")
+            indexes = f" {indexes}" if indexes else ""
+            index_sql = indexes + postindex_props_sql
+
             replace = " OR REPLACE" if expression.args.get("replace") else ""
+            refresh = " OR REFRESH" if expression.args.get("refresh") else ""
+            unique = " UNIQUE" if expression.args.get("unique") else ""
+
+            clustered = expression.args.get("clustered")
+            if clustered is None:
+                clustered_sql = ""
+            elif clustered:
+                clustered_sql = " CLUSTERED COLUMNSTORE"
+            else:
+                clustered_sql = " NONCLUSTERED COLUMNSTORE"
 
             postcreate_props_sql = ""
             if properties_locs.get(exp.Properties.Location.POST_CREATE):
@@ -3571,7 +3585,7 @@ class SingleStore(Dialect):
                     wrapped=False,
                 )
 
-            modifiers = "".join((replace, postcreate_props_sql))
+            modifiers = "".join((clustered_sql, replace, refresh, unique, postcreate_props_sql))
 
             postexpression_props_sql = ""
             if properties_locs.get(exp.Properties.Location.POST_EXPRESSION):
@@ -3584,26 +3598,19 @@ class SingleStore(Dialect):
                     wrapped=False,
                 )
 
+            concurrently = " CONCURRENTLY" if expression.args.get("concurrently") else ""
             exists_sql = " IF NOT EXISTS" if expression.args.get("exists") else ""
             no_schema_binding = (
-                " SCHEMA_BINDING=OFF" if expression.args.get("no_schema_binding") else ""
+                " WITH NO SCHEMA BINDING" if expression.args.get("no_schema_binding") else ""
             )
 
             clone = self.sql(expression, "clone")
             clone = f" {clone}" if clone else ""
 
-            properties_expression = f"{properties_sql}{expression_sql}"
+            if kind in self.EXPRESSION_PRECEDES_PROPERTIES_CREATABLES:
+                properties_expression = f"{expression_sql}{properties_sql}"
+            else:
+                properties_expression = f"{properties_sql}{expression_sql}"
 
-            expression_sql = f"CREATE{modifiers}{no_schema_binding} {kind}{exists_sql} {this}{properties_expression}{postexpression_props_sql}{clone}"
+            expression_sql = f"CREATE{modifiers} {kind}{concurrently}{exists_sql} {this}{properties_expression}{postexpression_props_sql}{index_sql}{no_schema_binding}{clone}"
             return self.prepend_ctes(expression, expression_sql)
-
-        def schema_sql(self, expression: exp.Schema, indexes: str = None) -> str:
-            this = self.sql(expression, "this")
-            sql = self.schema_columns_sql(expression, indexes)
-            return f"{this} {sql}" if this and sql else this or sql
-
-        def schema_columns_sql(self, expression: exp.Schema, indexes: str = None) -> str:
-            if expression.expressions:
-                indexes = f"{self.sep(', ')}{indexes}" if indexes else ""
-                return f"({self.sep('')}{self.expressions(expression)}{indexes}{self.seg(')', sep='')}"
-            return ""
