@@ -622,6 +622,11 @@ class Parser(metaclass=_Parser):
             this=this,
             to=to,
         ),
+        TokenType.COLON_GT: lambda self, this, to: self.expression(
+            exp.Cast if self.STRICT_CAST else exp.TryCast,
+            this=this,
+            to=to,
+        ),
         TokenType.ARROW: lambda self, this, path: self.expression(
             exp.JSONExtract,
             this=this,
@@ -4589,6 +4594,9 @@ class Parser(metaclass=_Parser):
 
         return this
 
+    def _parse_dcolon(self) -> t.Optional[exp.Expression]:
+        return self._parse_types()
+
     def _parse_column_ops(self, this: t.Optional[exp.Expression]) -> t.Optional[exp.Expression]:
         this = self._parse_bracket(this)
 
@@ -4596,7 +4604,7 @@ class Parser(metaclass=_Parser):
             op_token = self._prev.token_type
             op = self.COLUMN_OPERATORS.get(op_token)
 
-            if op_token == TokenType.DCOLON or op_token == TokenType.COLON_GT:
+            if op_token in ( TokenType.DCOLON,TokenType.COLON_GT):
                 field = self._parse_dcolon()
                 if not field:
                     self.raise_error("Expected type")
