@@ -4,6 +4,7 @@ from functools import reduce
 from setuptools.command.alias import alias
 
 from sqlglot import generator, tokens, exp
+from sqlglot.dialects.mysql import MySQL
 from sqlglot.tokens import TokenType
 from sqlglot.dialects.dialect import Dialect, NormalizationStrategy, no_ilike_sql, \
     bool_xor_sql, rename_func, count_if_to_sum, unit_to_str, timestrtotime_sql, \
@@ -14,7 +15,7 @@ from sqlglot.generator import ESCAPED_UNICODE_RE, unsupported_args
 from sqlglot.helper import csv
 
 
-class SingleStore(Dialect):
+class SingleStore(MySQL):
     NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_SENSITIVE
     IDENTIFIERS_CAN_START_WITH_DIGIT = True
     DPIPE_IS_STRING_CONCAT = False
@@ -83,6 +84,7 @@ class SingleStore(Dialect):
 
         COMMANDS = {*tokens.Tokenizer.COMMANDS, TokenType.REPLACE} - {
             TokenType.SHOW}
+        
 
     # TODO: implement
     # class Parser(parser.Parser):
