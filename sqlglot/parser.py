@@ -4597,8 +4597,8 @@ class Parser(metaclass=_Parser):
             op_token = self._prev.token_type
             op = self.COLUMN_OPERATORS.get(op_token)
 
-            if op_token == TokenType.DCOLON:
-                field = self._parse_types()
+            if op_token == TokenType.DCOLON or op_token == TokenType.COLON_GT:
+                field = self._parse_dcolon()
                 if not field:
                     self.raise_error("Expected type")
             elif op and self._curr:
