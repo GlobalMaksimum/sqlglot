@@ -4573,7 +4573,7 @@ class Parser(metaclass=_Parser):
                 dcolon_offset = next(
                     i
                     for i, t in enumerate(self._tokens[start_index:])
-                    if t.token_type == TokenType.DCOLON
+                    if t.token_type in (TokenType.DCOLON,TokenType.COLON_GT)
                 )
                 end_token = self._tokens[start_index + dcolon_offset - 1]
             else:
@@ -4601,7 +4601,7 @@ class Parser(metaclass=_Parser):
             op_token = self._prev.token_type
             op = self.COLUMN_OPERATORS.get(op_token)
 
-            if op_token == TokenType.DCOLON:
+            if op_token in (TokenType.DCOLON, TokenType.COLON_GT):
                 field = self._parse_types()
                 if not field:
                     self.raise_error("Expected type")
