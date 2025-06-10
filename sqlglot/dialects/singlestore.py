@@ -1,16 +1,15 @@
-import this
 from collections import defaultdict
 from functools import reduce
 
 from setuptools.command.alias import alias
 
-from sqlglot import Dialect, generator, Tokenizer, TokenType, tokens
-from sqlglot.dialects.dialect import NormalizationStrategy, no_ilike_sql, \
+from sqlglot import generator, tokens, exp
+from sqlglot.tokens import TokenType
+from sqlglot.dialects.dialect import Dialect, NormalizationStrategy, no_ilike_sql, \
     bool_xor_sql, rename_func, count_if_to_sum, unit_to_str, timestrtotime_sql, \
     time_format
 import typing as t
 import re
-from sqlglot import exp
 from sqlglot.generator import ESCAPED_UNICODE_RE, unsupported_args
 from sqlglot.helper import csv
 
@@ -72,7 +71,7 @@ class SingleStore(Dialect):
         COMMENTS = ["--", "#", ("/*", "*/")]
 
         KEYWORDS = {
-            **Tokenizer.KEYWORDS,
+            **tokens.Tokenizer.KEYWORDS,
             "@@": TokenType.SESSION_PARAMETER,
             "YEAR": TokenType.YEAR,
             "BSON": TokenType.JSONB,
