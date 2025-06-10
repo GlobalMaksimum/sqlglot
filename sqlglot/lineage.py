@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from sqlglot import Schema, exp, maybe_parse
 from sqlglot.errors import SqlglotError
-from sqlglot.optimizer import Scope, build_scope, find_all_in_scope, normalize_identifiers, qualify
+from sqlglot.optimizer import Scope, build_scope, find_all_in_scope, qualify
 from sqlglot.optimizer.scope import ScopeType
 
 if t.TYPE_CHECKING:
@@ -24,6 +24,7 @@ class Node:
     downstream: t.List[Node] = field(default_factory=list)
     source_name: str = ""
     reference_node_name: str = ""
+    subfield: str = ""
 
     def walk(self) -> t.Iterator[Node]:
         yield self
@@ -92,7 +93,8 @@ def lineage(
     """
 
     expression = maybe_parse(sql, dialect=dialect)
-    column = normalize_identifiers.normalize_identifiers(column, dialect=dialect).name
+    # column = normalize_identifiers.normalize_identifiers(column, dialect=dialect).name
+    assert isinstance(column, str)
 
     if sources:
         expression = exp.expand(
@@ -206,6 +208,26 @@ def to_node(
     if upstream:
         upstream.downstream.append(node)
 
+    _expression_into_node(
+        select=select,
+        node=node,
+        scope=scope,
+        dialect=dialect,
+        source_name=source_name,
+        trim_selects=trim_selects,
+    )
+
+    return node
+
+
+def _expression_into_node(
+    select: exp.Expression,
+    node: Node,
+    scope: Scope,
+    dialect: DialectType,
+    source_name: t.Optional[str] = None,
+    trim_selects: bool = True,
+) -> None:
     subquery_scopes = {
         id(subquery_scope.expression): subquery_scope for subquery_scope in scope.subquery_scopes
     }
@@ -235,11 +257,12 @@ def to_node(
             )
 
     # Find all columns that went into creating this one to list their lineage nodes.
-    source_columns = set(find_all_in_scope(select, exp.Column))
+    source_columns = list(find_all_in_scope(select, exp.Column))
 
-    # If the source is a UDTF find columns used in the UTDF to generate the table
+    # If the source is a UDTF find columns used in the UDTF to generate the table
+    source = scope.expression
     if isinstance(source, exp.UDTF):
-        source_columns |= set(source.find_all(exp.Column))
+        source_columns += list(source.find_all(exp.Column))
         derived_tables = [
             source.expression.parent
             for source in scope.sources.values()
@@ -254,6 +277,7 @@ def to_node(
         if dt.comments and dt.comments[0].startswith("source: ")
     }
 
+    c: exp.Column
     for c in source_columns:
         table = c.table
         source = scope.sources.get(table)
@@ -281,11 +305,22 @@ def to_node(
             # it means this column's lineage is unknown. This can happen if the definition of a source used in a query
             # is not passed into the `sources` map.
             source = source or exp.Placeholder()
-            node.downstream.append(
-                Node(name=c.sql(comments=False), source=source, expression=source)
-            )
 
-    return node
+            subfields = []
+            field: exp.Expression = c
+            while isinstance(field.parent, exp.Dot):
+                field = field.parent
+                subfields.append(field.name)
+            subfield = ".".join(subfields)
+
+            node.downstream.append(
+                Node(
+                    name=c.sql(comments=False),
+                    source=source,
+                    expression=source,
+                    subfield=subfield,
+                )
+            )
 
 
 class GraphHTML:

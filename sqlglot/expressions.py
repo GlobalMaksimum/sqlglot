@@ -35,6 +35,8 @@ from sqlglot.helper import (
 )
 from sqlglot.tokens import Token
 
+import datahub.utilities.cooperative_timeout
+
 if t.TYPE_CHECKING:
     from sqlglot._typing import E, Lit
     from sqlglot.dialects.dialect import DialectType
@@ -263,6 +265,8 @@ class Expression(metaclass=_Expression):
         return self._meta
 
     def __deepcopy__(self, memo):
+        datahub.utilities.cooperative_timeout.cooperate()
+
         root = self.__class__()
         stack = [(self, root)]
 

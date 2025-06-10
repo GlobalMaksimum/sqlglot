@@ -64,7 +64,7 @@ def qualify_columns(
             _expand_alias_refs(scope, resolver)
 
         _convert_columns_to_dots(scope, resolver)
-        _qualify_columns(scope, resolver)
+        _qualify_columns(scope, resolver, strict_schema_adherence=False)
 
         if not schema.empty and expand_alias_refs:
             _expand_alias_refs(scope, resolver)
@@ -402,7 +402,7 @@ def _convert_columns_to_dots(scope: Scope, resolver: Resolver) -> None:
         scope.clear_cache()
 
 
-def _qualify_columns(scope: Scope, resolver: Resolver) -> None:
+def _qualify_columns(scope: Scope, resolver: Resolver, strict_schema_adherence=True) -> None:
     """Disambiguate columns, ensuring each column specifies a source"""
     for column in scope.columns:
         column_table = column.table
@@ -410,7 +410,12 @@ def _qualify_columns(scope: Scope, resolver: Resolver) -> None:
 
         if column_table and column_table in scope.sources:
             source_columns = resolver.get_source_columns(column_table)
-            if source_columns and column_name not in source_columns and "*" not in source_columns:
+            if (
+                strict_schema_adherence
+                and source_columns
+                and column_name not in source_columns
+                and "*" not in source_columns
+            ):
                 raise OptimizeError(f"Unknown column: {column_name}")
 
         if not column_table:
