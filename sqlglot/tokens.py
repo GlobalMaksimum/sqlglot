@@ -38,6 +38,7 @@ class TokenType(AutoName):
     PLUS = auto()
     COLON = auto()
     DCOLON = auto()
+    COLON_GT = auto()
     DQMARK = auto()
     SEMICOLON = auto()
     STAR = auto()
@@ -662,6 +663,7 @@ class Tokenizer(metaclass=_Tokenizer):
         HINT_START: TokenType.HINT,
         "==": TokenType.EQ,
         "::": TokenType.DCOLON,
+        ":>": TokenType.COLON_GT,
         "||": TokenType.DPIPE,
         ">=": TokenType.GTE,
         "<=": TokenType.LTE,
