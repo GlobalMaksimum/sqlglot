@@ -19,7 +19,7 @@ from sqlglot.parser import Parser
 
 
 class SingleStore(Dialect):
-    NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_SENSITIVE
+    NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_INSENSITIVE
     IDENTIFIERS_CAN_START_WITH_DIGIT = True
     DPIPE_IS_STRING_CONCAT = False
     SUPPORTS_USER_DEFINED_TYPES = False
