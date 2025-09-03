@@ -273,6 +273,16 @@ SELECT * FROM QUARTERLY_SALES AS QUARTERLY_SALES PIVOT(SUM(QUARTERLY_SALES.AMOUN
 SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x) AS x FROM t;
 SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t.x) AS x FROM t AS t;
 
+# execute: false
+# dialect: bigquery
+WITH t AS (SELECT 1 AS c) SELECT TO_JSON_STRING(t) FROM t;
+WITH t AS (SELECT 1 AS c) SELECT TO_JSON_STRING(t) AS _col_0 FROM t AS t;
+
+# execute: false
+# dialect: bigquery
+SELECT DATE_TRUNC(col1, WEEK(MONDAY)), col2 FROM t;
+SELECT DATE_TRUNC(t.col1, WEEK(MONDAY)) AS _col_0, t.col2 AS col2 FROM t AS t;
+
 --------------------------------------
 -- Derived tables
 --------------------------------------
@@ -384,6 +394,25 @@ SELECT _q_0.foo AS foo, _q_0.qux AS qux FROM ((SELECT 1 AS foo, 2 AS bar LEFT UN
 SELECT * FROM (((SELECT 1 AS foo, 2 AS bar LEFT UNION ALL BY NAME SELECT 3 AS bar, 4 AS baz) FULL UNION ALL BY NAME ON (foo, qux) SELECT 3 AS qux, 4 AS bar) INNER UNION ALL BY NAME ON (foo) SELECT 6 AS foo);
 SELECT _q_0.foo AS foo FROM (((SELECT 1 AS foo, 2 AS bar LEFT UNION ALL BY NAME SELECT 3 AS bar, 4 AS baz) FULL UNION ALL BY NAME ON (foo, qux) SELECT 3 AS qux, 4 AS bar) INNER UNION ALL BY NAME ON (foo) SELECT 6 AS foo) AS _q_0;
 
+# Title: Nested set operations with modifiers
+# dialect: bigquery
+# execute: false
+WITH t1 AS (SELECT 1 AS a, 2 AS b), t2 AS (SELECT 2 AS b, 3 AS c), t3 AS (SELECT 2 AS c, 3 AS d), t4 AS (SELECT 2 AS e, 3 AS f) SELECT * FROM ((SELECT * FROM t1 FULL OUTER UNION ALL BY NAME (SELECT * FROM t2 FULL OUTER UNION ALL BY NAME (SELECT * FROM t3 FULL OUTER UNION ALL BY NAME SELECT * FROM t4))));
+WITH t1 AS (SELECT 1 AS a, 2 AS b), t2 AS (SELECT 2 AS b, 3 AS c), t3 AS (SELECT 2 AS c, 3 AS d), t4 AS (SELECT 2 AS e, 3 AS f) SELECT _q_0.a AS a, _q_0.b AS b, _q_0.c AS c, _q_0.d AS d, _q_0.e AS e, _q_0.f AS f FROM ((SELECT t1.a AS a, t1.b AS b FROM t1 AS t1 FULL OUTER UNION ALL BY NAME (SELECT t2.b AS b, t2.c AS c FROM t2 AS t2 FULL OUTER UNION ALL BY NAME (SELECT t3.c AS c, t3.d AS d FROM t3 AS t3 FULL OUTER UNION ALL BY NAME SELECT t4.e AS e, t4.f AS f FROM t4 AS t4))) AS _q_0);
+
+
+# Title: Nested set operations with different modifiers (FULL + INNER)
+# dialect: bigquery
+# execute: false
+WITH t1 AS (SELECT 1 AS a, 2 AS b), t2 AS (SELECT 2 AS b, 3 AS c), t3 AS (SELECT 2 AS c, 3 AS d), t4 AS (SELECT 2 AS e, 3 AS f) SELECT * FROM ((SELECT * FROM t1 FULL OUTER UNION ALL BY NAME (SELECT * FROM t2 INNER UNION ALL BY NAME (SELECT * FROM t3 FULL OUTER UNION ALL BY NAME SELECT * FROM t4))));
+WITH t1 AS (SELECT 1 AS a, 2 AS b), t2 AS (SELECT 2 AS b, 3 AS c), t3 AS (SELECT 2 AS c, 3 AS d), t4 AS (SELECT 2 AS e, 3 AS f) SELECT _q_0.a AS a, _q_0.b AS b, _q_0.c AS c FROM ((SELECT t1.a AS a, t1.b AS b FROM t1 AS t1 FULL OUTER UNION ALL BY NAME (SELECT t2.b AS b, t2.c AS c FROM t2 AS t2 INNER UNION ALL BY NAME (SELECT t3.c AS c, t3.d AS d FROM t3 AS t3 FULL OUTER UNION ALL BY NAME SELECT t4.e AS e, t4.f AS f FROM t4 AS t4))) AS _q_0);
+
+# Title: Nested set operations with different modifiers (FULL + LEFT)
+# dialect: bigquery
+# execute: false
+WITH t1 AS (SELECT 1 AS a, 2 AS b, 3 AS c, 4 AS d), t2 AS (SELECT 2 AS b, 3 AS c), t3 AS (SELECT 2 AS c, 3 AS d), t4 AS (SELECT 2 AS d, 3 AS e) SELECT * FROM ((SELECT * FROM t1 FULL OUTER UNION ALL BY NAME (SELECT * FROM t2 FULL UNION ALL BY NAME (SELECT * FROM t3 LEFT UNION ALL BY NAME SELECT * FROM t4))));
+WITH t1 AS (SELECT 1 AS a, 2 AS b, 3 AS c, 4 AS d), t2 AS (SELECT 2 AS b, 3 AS c), t3 AS (SELECT 2 AS c, 3 AS d), t4 AS (SELECT 2 AS d, 3 AS e) SELECT _q_0.a AS a, _q_0.b AS b, _q_0.c AS c, _q_0.d AS d FROM ((SELECT t1.a AS a, t1.b AS b, t1.c AS c, t1.d AS d FROM t1 AS t1 FULL OUTER UNION ALL BY NAME (SELECT t2.b AS b, t2.c AS c FROM t2 AS t2 FULL UNION ALL BY NAME (SELECT t3.c AS c, t3.d AS d FROM t3 AS t3 LEFT UNION ALL BY NAME SELECT t4.d AS d, t4.e AS e FROM t4 AS t4))) AS _q_0);
+
 --------------------------------------
 -- Subqueries
 --------------------------------------
@@ -470,7 +499,7 @@ SELECT s.b AS b FROM (SELECT t1.b AS b FROM t1 AS t1 UNION ALL SELECT t2.b AS b 
 # dialect: bigquery
 # execute: false
 WITH tbl1 AS (SELECT STRUCT(1 AS col1, 2 AS col2, Struct("test" AS col1, Struct(3 AS col2) AS lvl2) AS lvl1) AS col), tbl2 AS (SELECT STRUCT(1 AS col1, 2 AS col2, Struct("test" AS col1, Struct(3 AS col2) AS lvl2) AS lvl1) AS col) SELECT tbl1.col.*, tbl2.col.* FROM tbl1, tbl2;
-WITH tbl1 AS (SELECT STRUCT(1 AS col1, 2 AS col2, Struct('test' AS col1, Struct(3 AS col2) AS lvl2) AS lvl1) AS col), tbl2 AS (SELECT STRUCT(1 AS col1, 2 AS col2, Struct('test' AS col1, Struct(3 AS col2) AS lvl2) AS lvl1) AS col) SELECT tbl1.col.col1 AS col1, tbl1.col.col2 AS col2, tbl1.col.lvl1 AS lvl1, tbl2.col.col1 AS col1, tbl2.col.col2 AS col2, tbl2.col.lvl1 AS lvl1 FROM tbl1 AS tbl1, tbl2 AS tbl2;
+WITH tbl1 AS (SELECT STRUCT(1 AS col1, 2 AS col2, Struct('test' AS col1, Struct(3 AS col2) AS lvl2) AS lvl1) AS col), tbl2 AS (SELECT STRUCT(1 AS col1, 2 AS col2, Struct('test' AS col1, Struct(3 AS col2) AS lvl2) AS lvl1) AS col) SELECT tbl1.col.col1 AS col1, tbl1.col.col2 AS col2, tbl1.col.lvl1 AS lvl1, tbl2.col.col1 AS col1, tbl2.col.col2 AS col2, tbl2.col.lvl1 AS lvl1 FROM tbl1 AS tbl1 CROSS JOIN tbl2 AS tbl2;
 
 # dialect: bigquery
 # execute: false
@@ -488,6 +517,42 @@ WITH tbl1 AS (SELECT STRUCT(1 AS col1, Struct(5 AS col1)) AS col) SELECT tbl1.co
 # title: Cannot expand struct star with ambiguous fields
 WITH tbl1 AS (SELECT STRUCT(1 AS col1, 2 AS col1) AS col) SELECT tbl1.col.* FROM tbl1;
 WITH tbl1 AS (SELECT STRUCT(1 AS col1, 2 AS col1) AS col) SELECT tbl1.col.* FROM tbl1 AS tbl1;
+
+# dialect: bigquery
+# execute: false
+# title: BigQuery - Expand struct literal
+WITH tbl1 AS (SELECT STRUCT(1 AS f0, 2 as f1) AS col) SELECT tbl1.col.* from tbl1;
+WITH tbl1 AS (SELECT STRUCT(1 AS f0, 2 AS f1) AS col) SELECT tbl1.col.f0 AS f0, tbl1.col.f1 AS f1 FROM tbl1 AS tbl1;
+
+# dialect: bigquery
+# execute: false
+# title: BigQuery - Expand top level nested struct
+SELECT one.* FROM structs;
+SELECT structs.one.a_1 AS a_1, structs.one.b_1 AS b_1 FROM structs AS structs;
+
+# dialect: risingwave
+# execute: false
+# title: RisingWave - Expand top level nested struct
+SELECT (one).* FROM structs;
+SELECT (structs.one).a_1 AS a_1, (structs.one).b_1 AS b_1 FROM structs AS structs;
+
+# dialect: risingwave
+# execute: false
+# title: RisingWave - Preserve struct field identifier quotes
+SELECT (quoted).* FROM structs;
+SELECT (structs.quoted)."foo bar" AS "foo bar" FROM structs AS structs;
+
+# dialect: bigquery
+# execute: false
+# title: BigQuery - Expand midlevel struct
+SELECT nested_0.nested_1.* FROM structs;
+SELECT structs.nested_0.nested_1.a_2 AS a_2, structs.nested_0.nested_1.nested_2 AS nested_2 FROM structs AS structs;
+
+# dialect: risingwave
+# execute: false
+# title: RisingWave - Expand midlevel struct
+SELECT ((nested_0).nested_1).* FROM structs;
+SELECT ((structs.nested_0).nested_1).a_2 AS a_2, ((structs.nested_0).nested_1).nested_2 AS nested_2 FROM structs AS structs;
 
 # title: CSV files are not scanned by default
 # execute: false
@@ -727,7 +792,7 @@ SELECT t.aa AS aa FROM x AS x, UNNEST(x.a) AS t(aa);
 # dialect: bigquery
 # execute: false
 SELECT aa FROM x, UNNEST(a) AS aa;
-SELECT aa AS aa FROM x AS x, UNNEST(x.a) AS aa;
+SELECT aa AS aa FROM x AS x CROSS JOIN UNNEST(x.a) AS aa;
 
 # dialect: bigquery
 # execute: false
@@ -747,7 +812,7 @@ SELECT x AS x, a AS a, x.a AS a FROM UNNEST([STRUCT(1 AS a)]) AS x CROSS JOIN m 
 # dialect: bigquery
 # execute: false
 WITH cte AS (SELECT [STRUCT(1 AS a)] AS x) select a, x, m.a from cte, UNNEST(x) AS m CROSS JOIN n;
-WITH cte AS (SELECT [STRUCT(1 AS a)] AS x) SELECT a AS a, cte.x AS x, m.a AS a FROM cte AS cte, UNNEST(cte.x) AS m CROSS JOIN n AS n;
+WITH cte AS (SELECT [STRUCT(1 AS a)] AS x) SELECT a AS a, cte.x AS x, m.a AS a FROM cte AS cte CROSS JOIN UNNEST(cte.x) AS m CROSS JOIN n AS n;
 
 # dialect: presto
 SELECT x.a, i.b FROM x CROSS JOIN UNNEST(SPLIT(CAST(b AS VARCHAR), ',')) AS i(b);
@@ -773,6 +838,15 @@ SELECT CAST(c.f AS VARCHAR(MAX)) AS f, e AS e FROM a.b AS c, c.d AS e;
 # dialect: bigquery
 WITH cte AS (SELECT 1 AS col) SELECT * FROM cte LEFT JOIN UNNEST((SELECT ARRAY_AGG(DISTINCT x) AS agg FROM UNNEST([1]) AS x WHERE col = 1));
 WITH cte AS (SELECT 1 AS col) SELECT * FROM cte AS cte LEFT JOIN UNNEST((SELECT ARRAY_AGG(DISTINCT x) AS agg FROM UNNEST([1]) AS x WHERE cte.col = 1));
+
+# dialect: bigquery
+SELECT * FROM UNNEST(ARRAY<STRUCT<percentile STRING, value INT64, score FLOAT64>>[("p10", 1, 0.0)]);
+SELECT percentile AS percentile, value AS value, score AS score FROM UNNEST(ARRAY<STRUCT<percentile STRING, value INT64, score FLOAT64>>[('p10', 1, 0.0)]);
+
+# dialect: bigquery
+# execute: false
+WITH scores AS (SELECT * FROM UNNEST((SELECT ARRAY<STRUCT<percentile STRING, value INT64, score FLOAT64>>[("p10", 1, 0.0)]))) SELECT percentile FROM scores;
+WITH scores AS (SELECT * FROM UNNEST((SELECT ARRAY<STRUCT<percentile STRING, value INT64, score FLOAT64>>[('p10', 1, 0.0)] AS _col_0))) SELECT scores.percentile AS percentile FROM scores AS scores;
 
 --------------------------------------
 -- Window functions

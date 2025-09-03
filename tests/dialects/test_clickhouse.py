@@ -110,6 +110,11 @@ class TestClickhouse(Validator):
         self.validate_identity("TRUNCATE DATABASE db")
         self.validate_identity("TRUNCATE DATABASE db ON CLUSTER test_cluster")
         self.validate_identity("TRUNCATE DATABASE db ON CLUSTER '{cluster}'")
+        self.validate_identity("EXCHANGE TABLES x.a AND y.b", check_command_warning=True)
+        self.validate_identity("CREATE TABLE test (id UInt8) ENGINE=Null()")
+        self.validate_identity(
+            "SELECT * FROM foo ORDER BY bar OFFSET 0 ROWS FETCH NEXT 10 ROWS WITH TIES"
+        )
         self.validate_identity(
             "SELECT DATE_BIN(toDateTime('2023-01-01 14:45:00'), INTERVAL '1' MINUTE, toDateTime('2023-01-01 14:35:30'), 'UTC')",
         )
@@ -183,6 +188,10 @@ class TestClickhouse(Validator):
             "SELECT generate_series FROM generate_series(0, 10) AS g(x)",
         )
         self.validate_identity(
+            "SELECT * FROM t1, t2",
+            "SELECT * FROM t1 CROSS JOIN t2",
+        )
+        self.validate_identity(
             "SELECT and(1, 2)",
             "SELECT 1 AND 2",
         )
@@ -215,6 +224,29 @@ class TestClickhouse(Validator):
             "SELECT SUM(1) AS impressions FROM (SELECT ['Istanbul', 'Berlin', 'Bobruisk'] AS cities) WHERE arrayJoin(cities) IN ('Istanbul', 'Berlin')",
         )
 
+        self.validate_identity("SELECT SUBSTRING_INDEX(str, delim, count)")
+        self.validate_identity("SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)")
+        self.validate_identity("SELECT SUBSTRING_INDEX('a.b.c.d', '.', -2)")
+
+        self.validate_all(
+            "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+            write={
+                "databricks": "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+                "spark": "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+                "mysql": "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+            },
+        )
+
+        self.validate_all(
+            "SELECT substringIndex('a.b.c.d', '.', 2)",
+            write={
+                "databricks": "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+                "spark": "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+                "mysql": "SELECT SUBSTRING_INDEX('a.b.c.d', '.', 2)",
+                "clickhouse": "SELECT substringIndex('a.b.c.d', '.', 2)",
+            },
+        )
+
         self.validate_all(
             "SELECT CAST(STR_TO_DATE(SUBSTRING(a.eta, 1, 10), '%Y-%m-%d') AS Nullable(DATE))",
             read={
@@ -222,6 +254,7 @@ class TestClickhouse(Validator):
                 "oracle": "SELECT to_date(substr(a.eta, 1,10), 'YYYY-MM-DD')",
             },
         )
+
         self.validate_all(
             "CHAR(67) || CHAR(65) || CHAR(84)",
             read={
@@ -604,6 +637,11 @@ class TestClickhouse(Validator):
         )
         self.validate_identity("SELECT arrayConcat([1, 2], [3, 4])")
 
+        self.validate_identity("SELECT parseDateTime('2021-01-04+23:00:00', '%Y-%m-%d+%H:%i:%s')")
+        self.validate_identity(
+            "SELECT parseDateTime('2021-01-04+23:00:00', '%Y-%m-%d+%H:%i:%s', 'Asia/Istanbul')"
+        )
+
     def test_clickhouse_values(self):
         ast = self.parse_one("SELECT * FROM VALUES (1, 2, 3)")
         self.assertEqual(len(list(ast.find_all(exp.Tuple))), 4)
@@ -660,6 +698,8 @@ class TestClickhouse(Validator):
                 self.parse_one(query, error_level=error_level).sql(dialect=self.dialect),
                 query,
             )
+
+        self.validate_identity("arraySlice(x, 1)")
 
     def test_ternary(self):
         self.validate_all("x ? 1 : 2", write={"clickhouse": "CASE WHEN x THEN 1 ELSE 2 END"})

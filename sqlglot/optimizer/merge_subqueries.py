@@ -92,9 +92,9 @@ def merge_ctes(expression: E, leave_tables_isolated: bool = False) -> E:
             _rename_inner_sources(outer_scope, inner_scope, alias)
             _merge_from(outer_scope, inner_scope, table, alias)
             _merge_expressions(outer_scope, inner_scope, alias)
+            _merge_order(outer_scope, inner_scope)
             _merge_joins(outer_scope, inner_scope, from_or_join)
             _merge_where(outer_scope, inner_scope, from_or_join)
-            _merge_order(outer_scope, inner_scope)
             _merge_hints(outer_scope, inner_scope)
             _pop_cte(inner_scope)
             outer_scope.clear_cache()
@@ -111,9 +111,9 @@ def merge_derived_tables(expression: E, leave_tables_isolated: bool = False) -> 
                 _rename_inner_sources(outer_scope, inner_scope, alias)
                 _merge_from(outer_scope, inner_scope, subquery, alias)
                 _merge_expressions(outer_scope, inner_scope, alias)
+                _merge_order(outer_scope, inner_scope)
                 _merge_joins(outer_scope, inner_scope, from_or_join)
                 _merge_where(outer_scope, inner_scope, from_or_join)
-                _merge_order(outer_scope, inner_scope)
                 _merge_hints(outer_scope, inner_scope)
                 outer_scope.clear_cache()
 
@@ -329,6 +329,10 @@ def _merge_expressions(outer_scope: Scope, inner_scope: Scope, alias: str) -> No
             # context surrounding the outer expression (i.e. it's not a simple projection).
             if isinstance(column.parent, (exp.Unary, exp.Binary)) and must_wrap_expression:
                 expression = exp.paren(expression, copy=False)
+
+            # make sure we do not accidentally change the name of the column
+            if isinstance(column.parent, exp.Select) and column.name != expression.name:
+                expression = exp.alias_(expression, column.name)
 
             column.replace(expression.copy())
 

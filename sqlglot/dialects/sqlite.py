@@ -94,10 +94,23 @@ class SQLite(Dialect):
         IDENTIFIERS = ['"', ("[", "]"), "`"]
         HEX_STRINGS = [("x'", "'"), ("X'", "'"), ("0x", ""), ("0X", "")]
 
-        KEYWORDS = tokens.Tokenizer.KEYWORDS.copy()
+        NESTED_COMMENTS = False
+
+        KEYWORDS = {
+            **tokens.Tokenizer.KEYWORDS,
+            "ATTACH": TokenType.ATTACH,
+            "DETACH": TokenType.DETACH,
+        }
+
         KEYWORDS.pop("/*+")
 
+        COMMANDS = {*tokens.Tokenizer.COMMANDS, TokenType.REPLACE}
+
     class Parser(parser.Parser):
+        STRING_ALIASES = True
+        ALTER_RENAME_REQUIRES_COLUMN = False
+        JOINS_HAVE_EQUAL_PRECEDENCE = True
+
         FUNCTIONS = {
             **parser.Parser.FUNCTIONS,
             "EDITDIST3": exp.Levenshtein.from_arg_list,
@@ -105,7 +118,12 @@ class SQLite(Dialect):
             "DATETIME": lambda args: exp.Anonymous(this="DATETIME", expressions=args),
             "TIME": lambda args: exp.Anonymous(this="TIME", expressions=args),
         }
-        STRING_ALIASES = True
+
+        STATEMENT_PARSERS = {
+            **parser.Parser.STATEMENT_PARSERS,
+            TokenType.ATTACH: lambda self: self._parse_attach_detach(),
+            TokenType.DETACH: lambda self: self._parse_attach_detach(is_attach=False),
+        }
 
         def _parse_unique(self) -> exp.UniqueColumnConstraint:
             # Do not consume more tokens if UNIQUE is used as a standalone constraint, e.g:
@@ -114,6 +132,16 @@ class SQLite(Dialect):
                 return self.expression(exp.UniqueColumnConstraint)
 
             return super()._parse_unique()
+
+        def _parse_attach_detach(self, is_attach=True) -> exp.Attach | exp.Detach:
+            self._match(TokenType.DATABASE)
+            this = self._parse_expression()
+
+            return (
+                self.expression(exp.Attach, this=this)
+                if is_attach
+                else self.expression(exp.Detach, this=this)
+            )
 
     class Generator(generator.Generator):
         JOIN_HINTS = False
@@ -124,6 +152,7 @@ class SQLite(Dialect):
         SUPPORTS_CREATE_TABLE_LIKE = False
         SUPPORTS_TABLE_ALIAS_COLUMNS = False
         SUPPORTS_TO_NUMBER = False
+        SUPPORTS_WINDOW_EXCLUDE = True
         EXCEPT_INTERSECT_SUPPORT_ALL_CLAUSE = False
         SUPPORTS_MEDIAN = False
         JSON_KEY_VALUE_PAIR_SEP = ","
@@ -304,3 +333,10 @@ class SQLite(Dialect):
         @unsupported_args("this")
         def currentschema_sql(self, expression: exp.CurrentSchema) -> str:
             return "'main'"
+
+        def ignorenulls_sql(self, expression: exp.IgnoreNulls) -> str:
+            self.unsupported("SQLite does not support IGNORE NULLS.")
+            return self.sql(expression.this)
+
+        def respectnulls_sql(self, expression: exp.RespectNulls) -> str:
+            return self.sql(expression.this)

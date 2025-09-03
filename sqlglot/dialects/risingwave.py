@@ -1,5 +1,6 @@
 from __future__ import annotations
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.generator import Generator
 from sqlglot.tokens import TokenType
 import typing as t
 
@@ -60,6 +61,7 @@ class RisingWave(Postgres):
 
     class Generator(Postgres.Generator):
         LOCKING_READS_SUPPORTED = False
+        SUPPORTS_BETWEEN_FLAGS = False
 
         TRANSFORMS = {
             **Postgres.Generator.TRANSFORMS,
@@ -72,3 +74,13 @@ class RisingWave(Postgres):
         }
 
         EXPRESSION_PRECEDES_PROPERTIES_CREATABLES = {"SINK"}
+
+        def computedcolumnconstraint_sql(self, expression: exp.ComputedColumnConstraint) -> str:
+            return Generator.computedcolumnconstraint_sql(self, expression)
+
+        def datatype_sql(self, expression: exp.DataType) -> str:
+            if expression.is_type(exp.DataType.Type.MAP) and len(expression.expressions) == 2:
+                key_type, value_type = expression.expressions
+                return f"MAP({self.sql(key_type)}, {self.sql(value_type)})"
+
+            return super().datatype_sql(expression)

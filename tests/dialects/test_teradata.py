@@ -41,13 +41,29 @@ class TestTeradata(Validator):
         ).assert_is(exp.Command)
 
     def test_translate(self):
-        self.validate_all(
-            "TRANSLATE(x USING LATIN_TO_UNICODE)",
-            write={
-                "teradata": "CAST(x AS CHAR CHARACTER SET UNICODE)",
-            },
+        self.validate_identity("TRANSLATE(x USING LATIN_TO_UNICODE)")
+        self.validate_identity("TRANSLATE(x USING LATIN_TO_UNICODE WITH ERROR)")
+
+    def test_locking(self):
+        self.validate_identity("LOCKING ROW FOR ACCESS SELECT * FROM table1")
+        self.validate_identity("LOCKING TABLE table1 FOR ACCESS SELECT col1, col2 FROM table1")
+        self.validate_identity("LOCKING ROW FOR SHARE SELECT * FROM table1")
+        self.validate_identity("LOCKING DATABASE db1 FOR READ SELECT * FROM table1")
+        self.validate_identity("LOCKING ROW FOR EXCLUSIVE SELECT * FROM table1")
+        self.validate_identity("LOCKING VIEW view1 FOR ACCESS SELECT * FROM view1")
+
+        # Test with more complex SELECT statements
+        self.validate_identity(
+            "LOCKING ROW FOR ACCESS SELECT col1, col2 FROM table1 WHERE col1 > 10"
         )
-        self.validate_identity("CAST(x AS CHAR CHARACTER SET UNICODE)")
+        self.validate_identity(
+            "LOCKING TABLE table1 FOR ACCESS SELECT * FROM table1 JOIN table2 ON table1.id = table2.id"
+        )
+
+        # Test that it still works in CREATE VIEW context (regression test)
+        self.validate_identity(
+            "CREATE VIEW view_b AS LOCKING ROW FOR ACCESS SELECT COL1, COL2 FROM table_b"
+        )
 
     def test_update(self):
         self.validate_all(
@@ -236,6 +252,17 @@ class TestTeradata(Validator):
             },
         )
 
+    def test_format_override(self):
+        # Teradata column format overrides use the `(FORMAT <format_string>)` syntax.
+        # https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Types-and-Literals/Data-Type-Formats-and-Format-Phrases/FORMAT
+        self.validate_identity("SELECT ('a' || 'b') (FORMAT '...')")
+        self.validate_identity("SELECT Col1 (FORMAT '+9999') FROM Test1")
+        self.validate_identity("SELECT date_col (FORMAT 'YYYY-MM-DD') FROM t")
+        self.validate_identity(
+            "SELECT CAST(Col1 AS INTEGER) FROM Test1",
+            "SELECT CAST(Col1 AS INT) FROM Test1",
+        )
+
     def test_time(self):
         self.validate_identity("CAST(CURRENT_TIMESTAMP(6) AS TIMESTAMP WITH TIME ZONE)")
 
@@ -326,3 +353,17 @@ class TestTeradata(Validator):
                 "teradata": "CAST(TO_CHAR(x, 'Q') AS INT)",
             },
         )
+
+    def test_query_band(self):
+        self.validate_identity("SET QUERY_BAND = 'app=myapp;' FOR SESSION")
+        self.validate_identity("SET QUERY_BAND = 'app=myapp;user=john;' FOR TRANSACTION")
+        self.validate_identity("SET QUERY_BAND = 'priority=high;' UPDATE FOR SESSION")
+        self.validate_identity("SET QUERY_BAND = 'workload=batch;' UPDATE FOR TRANSACTION")
+        self.validate_identity("SET QUERY_BAND = 'org=Finance;report=Fin123;' FOR SESSION")
+        self.validate_identity("SET QUERY_BAND = NONE FOR SESSION")
+        self.validate_identity("SET QUERY_BAND = NONE FOR SESSION VOLATILE")
+        self.validate_identity("SET QUERY_BAND = 'priority=high;' UPDATE FOR SESSION VOLATILE")
+        self.validate_identity(
+            "SET QUERY_BAND = 'NONE' FOR SESSION"
+        )  # quoted NONE should remain quoted
+        self.validate_identity("SET QUERY_BAND = '' FOR SESSION")
