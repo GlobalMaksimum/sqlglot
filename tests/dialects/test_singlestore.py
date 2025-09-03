@@ -49,6 +49,13 @@ class TestSingleStore(Validator):
             "SELECT DATE_FORMAT('12:05:47' :> TIME(6), '%s, %i, %h')",
         )
         self.validate_identity("SELECT DATE('2019-01-01 05:06')")
+        self.validate_all(
+            "SELECT DATE('2019-01-01 05:06')",
+            read={
+                "": "SELECT TS_OR_DS_TO_DATE('2019-01-01 05:06')",
+                "singlestore": "SELECT DATE('2019-01-01 05:06')",
+            },
+        )
 
     def test_cast(self):
         self.validate_all(
@@ -194,6 +201,25 @@ class TestSingleStore(Validator):
             },
         )
 
+    def test_json(self):
+        self.validate_identity("SELECT JSON_ARRAY_CONTAINS_STRING('[\"a\", \"b\"]', 'b')")
+        self.validate_identity("SELECT JSON_ARRAY_CONTAINS_DOUBLE('[1, 2]', 1)")
+        self.validate_identity('SELECT JSON_ARRAY_CONTAINS_JSON(\'["{"a": 1}"]\', \'{"a":   1}\')')
+        self.validate_all(
+            "SELECT JSON_ARRAY_CONTAINS_JSON('[\"a\"]', TO_JSON('a'))",
+            read={
+                "mysql": "SELECT 'a' MEMBER OF ('[\"a\"]')",
+                "singlestore": "SELECT JSON_ARRAY_CONTAINS_JSON('[\"a\"]', TO_JSON('a'))",
+            },
+        )
+        self.validate_all(
+            'SELECT JSON_PRETTY(\'["G","alpha","20",10]\')',
+            read={
+                "singlestore": 'SELECT JSON_PRETTY(\'["G","alpha","20",10]\')',
+                "": 'SELECT JSON_FORMAT(\'["G","alpha","20",10]\')',
+            },
+        )
+
     def test_date_parts_functions(self):
         self.validate_identity(
             "SELECT DAYNAME('2014-04-18')", "SELECT DATE_FORMAT('2014-04-18', '%W')"
@@ -207,6 +233,16 @@ class TestSingleStore(Validator):
             "SELECT DATE_FORMAT('2009-02-13 23:31:30.123456' :> TIME(6), '%f') :> INT",
         )
         self.validate_identity(
+            "SELECT SECOND('2009-02-13 23:31:30.123456')",
+            "SELECT DATE_FORMAT('2009-02-13 23:31:30.123456' :> TIME(6), '%s') :> INT",
+        )
+        self.validate_identity(
+            "SELECT MONTHNAME('2014-04-18')", "SELECT DATE_FORMAT('2014-04-18', '%M')"
+        )
+        self.validate_identity(
+            "SELECT WEEKDAY('2014-04-18')", "SELECT (DAYOFWEEK('2014-04-18') + 5) % 7"
+        )
+        self.validate_identity(
             "SELECT MINUTE('2009-02-13 23:31:30.123456')",
             "SELECT DATE_FORMAT('2009-02-13 23:31:30.123456' :> TIME(6), '%i') :> INT",
         )
@@ -216,4 +252,469 @@ class TestSingleStore(Validator):
                 "singlestore": "SELECT ((DAYOFWEEK('2014-04-18') % 7) + 1)",
                 "": "SELECT DAYOFWEEK_ISO('2014-04-18')",
             },
+        )
+        self.validate_all(
+            "SELECT DAY('2014-04-18')",
+            read={
+                "singlestore": "SELECT DAY('2014-04-18')",
+                "": "SELECT DAY_OF_MONTH('2014-04-18')",
+            },
+        )
+
+    def test_math_functions(self):
+        self.validate_all(
+            "SELECT APPROX_COUNT_DISTINCT(asset_id) AS approx_distinct_asset_id FROM acd_assets",
+            read={
+                "singlestore": "SELECT APPROX_COUNT_DISTINCT(asset_id) AS approx_distinct_asset_id FROM acd_assets",
+                "": "SELECT HLL(asset_id) AS approx_distinct_asset_id FROM acd_assets",
+            },
+        )
+        self.validate_identity(
+            "SELECT APPROX_COUNT_DISTINCT(asset_id1, asset_id2) AS approx_distinct_asset_id FROM acd_assets"
+        )
+        self.validate_all(
+            "SELECT APPROX_COUNT_DISTINCT(asset_id) AS approx_distinct_asset_id FROM acd_assets",
+            read={
+                "singlestore": "SELECT APPROX_COUNT_DISTINCT(asset_id) AS approx_distinct_asset_id FROM acd_assets",
+                "": "SELECT APPROX_DISTINCT(asset_id) AS approx_distinct_asset_id FROM acd_assets",
+            },
+        )
+        self.validate_all(
+            "SELECT SUM(CASE WHEN age > 18 THEN 1 ELSE 0 END) FROM `users`",
+            read={
+                "singlestore": "SELECT SUM(CASE WHEN age > 18 THEN 1 ELSE 0 END) FROM `users`",
+                "": "SELECT COUNT_IF(age > 18) FROM users",
+            },
+        )
+        self.validate_all(
+            "SELECT MAX(ABS(age > 18)) FROM `users`",
+            read={
+                "singlestore": "SELECT MAX(ABS(age > 18)) FROM `users`",
+                "": "SELECT LOGICAL_OR(age > 18) FROM users",
+            },
+        )
+        self.validate_all(
+            "SELECT MIN(ABS(age > 18)) FROM `users`",
+            read={
+                "singlestore": "SELECT MIN(ABS(age > 18)) FROM `users`",
+                "": "SELECT LOGICAL_AND(age > 18) FROM users",
+            },
+        )
+        self.validate_identity(
+            "SELECT `class`, student_id, test1, APPROX_PERCENTILE(test1, 0.3) OVER (PARTITION BY `class`) AS percentile FROM test_scores"
+        )
+        self.validate_identity(
+            "SELECT `class`, student_id, test1, APPROX_PERCENTILE(test1, 0.3, 0.4) OVER (PARTITION BY `class`) AS percentile FROM test_scores"
+        )
+        self.validate_all(
+            "SELECT APPROX_PERCENTILE(test1, 0.3) FROM test_scores",
+            read={
+                "singlestore": "SELECT APPROX_PERCENTILE(test1, 0.3) FROM test_scores",
+                # accuracy parameter is not supported in SingleStore, so it is ignored
+                "": "SELECT APPROX_QUANTILE(test1, 0.3, 0.4) FROM test_scores",
+            },
+        )
+        self.validate_all(
+            "SELECT VAR_SAMP(yearly_total) FROM player_scores",
+            read={
+                "singlestore": "SELECT VAR_SAMP(yearly_total) FROM player_scores",
+                "": "SELECT VARIANCE(yearly_total) FROM player_scores",
+            },
+            write={
+                "": "SELECT VARIANCE(yearly_total) FROM player_scores",
+            },
+        )
+        self.validate_all(
+            "SELECT VAR_POP(yearly_total) FROM player_scores",
+            read={
+                "singlestore": "SELECT VARIANCE(yearly_total) FROM player_scores",
+                "": "SELECT VARIANCE_POP(yearly_total) FROM player_scores",
+            },
+            write={
+                "": "SELECT VARIANCE_POP(yearly_total) FROM player_scores",
+            },
+        )
+
+    def test_logical(self):
+        self.validate_all(
+            "SELECT (TRUE AND (NOT FALSE)) OR ((NOT TRUE) AND FALSE)",
+            read={
+                "mysql": "SELECT TRUE XOR FALSE",
+                "singlestore": "SELECT (TRUE AND (NOT FALSE)) OR ((NOT TRUE) AND FALSE)",
+            },
+        )
+
+    def test_string_functions(self):
+        self.validate_all(
+            "SELECT 'a' RLIKE 'b'",
+            read={
+                "bigquery": "SELECT REGEXP_CONTAINS('a', 'b')",
+                "singlestore": "SELECT 'a' RLIKE 'b'",
+            },
+        )
+        self.validate_identity("SELECT 'a' REGEXP 'b'", "SELECT 'a' RLIKE 'b'")
+        self.validate_all(
+            "SELECT LPAD('', LENGTH('a') * 3, 'a')",
+            read={
+                "": "SELECT REPEAT('a', 3)",
+                "singlestore": "SELECT LPAD('', LENGTH('a') * 3, 'a')",
+            },
+        )
+        self.validate_all(
+            "SELECT REGEXP_SUBSTR('adog', 'O', 1, 1, 'c')",
+            read={
+                # group parameter is not supported in SingleStore, so it is ignored
+                "": "SELECT REGEXP_EXTRACT('adog', 'O', 1, 1, 'c', 'gr1')",
+                "singlestore": "SELECT REGEXP_SUBSTR('adog', 'O', 1, 1, 'c')",
+            },
+        )
+        self.validate_all(
+            "SELECT ('a' RLIKE '^[\x00-\x7f]*$')",
+            read={"singlestore": "SELECT ('a' RLIKE '^[\x00-\x7f]*$')", "": "SELECT IS_ASCII('a')"},
+        )
+        self.validate_all(
+            "SELECT UNHEX(MD5('data'))",
+            read={
+                "singlestore": "SELECT UNHEX(MD5('data'))",
+                "": "SELECT MD5_DIGEST('data')",
+            },
+        )
+        self.validate_all(
+            "SELECT CHAR(101)", read={"": "SELECT CHR(101)", "singlestore": "SELECT CHAR(101)"}
+        )
+        self.validate_all(
+            "SELECT INSTR('ohai', 'i')",
+            read={
+                "": "SELECT CONTAINS('ohai', 'i')",
+                "singlestore": "SELECT INSTR('ohai', 'i')",
+            },
+        )
+        self.validate_all(
+            "SELECT REGEXP_MATCH('adog', 'O', 'c')",
+            read={
+                # group, position, occurrence parameters are not supported in SingleStore, so they are ignored
+                "": "SELECT REGEXP_EXTRACT_ALL('adog', 'O', 1, 1, 'c', 'gr1')",
+                "singlestore": "SELECT REGEXP_MATCH('adog', 'O', 'c')",
+            },
+        )
+        self.validate_all(
+            "SELECT REGEXP_SUBSTR('adog', 'O', 1, 1, 'c')",
+            read={
+                # group parameter is not supported in SingleStore, so it is ignored
+                "": "SELECT REGEXP_EXTRACT('adog', 'O', 1, 1, 'c', 'gr1')",
+                "singlestore": "SELECT REGEXP_SUBSTR('adog', 'O', 1, 1, 'c')",
+            },
+        )
+        self.validate_all(
+            "SELECT REGEXP_INSTR('abcd', CONCAT('^', 'ab'))",
+            read={
+                "": "SELECT STARTS_WITH('abcd', 'ab')",
+                "singlestore": "SELECT REGEXP_INSTR('abcd', CONCAT('^', 'ab'))",
+            },
+        )
+        self.validate_all(
+            "SELECT CONV('f', 16, 10)",
+            read={
+                "redshift": "SELECT STRTOL('f',16)",
+                "singlestore": "SELECT CONV('f', 16, 10)",
+            },
+        )
+        self.validate_all(
+            "SELECT LOWER('ABC') RLIKE LOWER('a.*')",
+            read={
+                "postgres": "SELECT 'ABC' ~* 'a.*'",
+                "singlestore": "SELECT LOWER('ABC') RLIKE LOWER('a.*')",
+            },
+        )
+
+    def test_reduce_functions(self):
+        self.validate_all(
+            "SELECT REDUCE(0, JSON_TO_ARRAY('[1,2,3,4]'), REDUCE_ACC() + REDUCE_VALUE()) AS `Result`",
+            read={
+                # finish argument is not supported in SingleStore, so it is ignored
+                "": "SELECT REDUCE(JSON_TO_ARRAY('[1,2,3,4]'), 0, REDUCE_ACC() + REDUCE_VALUE(), REDUCE_ACC() + REDUCE_VALUE()) AS Result",
+                "singlestore": "SELECT REDUCE(0, JSON_TO_ARRAY('[1,2,3,4]'), REDUCE_ACC() + REDUCE_VALUE()) AS `Result`",
+            },
+        )
+
+    def test_time_functions(self):
+        self.validate_all(
+            "SELECT TIME_BUCKET('1d', '2019-03-14 06:04:12', '2019-03-13 03:00:00')",
+            read={
+                # unit and zone parameters are not supported in SingleStore, so they are ignored
+                "": "SELECT DATE_BIN('1d', '2019-03-14 06:04:12', DAY, 'UTC', '2019-03-13 03:00:00')",
+                "singlestore": "SELECT TIME_BUCKET('1d', '2019-03-14 06:04:12', '2019-03-13 03:00:00')",
+            },
+        )
+        self.validate_all(
+            "SELECT '2019-03-14 06:04:12' :> DATE",
+            read={
+                "": "SELECT TIME_STR_TO_DATE('2019-03-14 06:04:12')",
+                "singlestore": "SELECT '2019-03-14 06:04:12' :> DATE",
+            },
+        )
+        self.validate_all(
+            "SELECT CONVERT_TZ(NOW() :> TIMESTAMP, 'GMT', 'UTC')",
+            read={
+                "spark2": "SELECT TO_UTC_TIMESTAMP(NOW(), 'GMT')",
+                "singlestore": "SELECT CONVERT_TZ(NOW() :> TIMESTAMP, 'GMT', 'UTC')",
+            },
+        )
+        self.validate_all(
+            "SELECT STR_TO_DATE(20190314, '%Y%m%d')",
+            read={
+                "": "SELECT DI_TO_DATE(20190314)",
+                "singlestore": "SELECT STR_TO_DATE(20190314, '%Y%m%d')",
+            },
+        )
+        self.validate_all(
+            "SELECT (DATE_FORMAT('2019-03-14 06:04:12', '%Y%m%d') :> INT)",
+            read={
+                "singlestore": "SELECT (DATE_FORMAT('2019-03-14 06:04:12', '%Y%m%d') :> INT)",
+                "": "SELECT DATE_TO_DI('2019-03-14 06:04:12')",
+            },
+        )
+        self.validate_all(
+            "SELECT (DATE_FORMAT('2019-03-14 06:04:12', '%Y%m%d') :> INT)",
+            read={
+                "singlestore": "SELECT (DATE_FORMAT('2019-03-14 06:04:12', '%Y%m%d') :> INT)",
+                "": "SELECT TS_OR_DI_TO_DI('2019-03-14 06:04:12')",
+            },
+        )
+        self.validate_all(
+            "SELECT '2019-03-14 06:04:12' :> TIME",
+            read={
+                # zone parameter is not supported in SingleStore, so it is ignored
+                "bigquery": "SELECT TIME('2019-03-14 06:04:12', 'GMT')",
+                "singlestore": "SELECT '2019-03-14 06:04:12' :> TIME",
+            },
+        )
+        self.validate_all(
+            "SELECT DATE_ADD(NOW(), INTERVAL '1' MONTH)",
+            read={
+                "bigquery": "SELECT DATETIME_ADD(NOW(), INTERVAL 1 MONTH)",
+                "singlestore": "SELECT DATE_ADD(NOW(), INTERVAL '1' MONTH)",
+            },
+        )
+        self.validate_all(
+            "SELECT DATE_TRUNC('MINUTE', '2016-08-08 12:05:31')",
+            read={
+                "bigquery": "SELECT DATETIME_TRUNC('2016-08-08 12:05:31', MINUTE)",
+                "singlestore": "SELECT DATE_TRUNC('MINUTE', '2016-08-08 12:05:31')",
+            },
+        )
+        self.validate_all(
+            "SELECT DATE_SUB('2010-04-02', INTERVAL '1' WEEK)",
+            read={
+                "bigquery": "SELECT DATETIME_SUB('2010-04-02', INTERVAL '1' WEEK)",
+                "singlestore": "SELECT DATE_SUB('2010-04-02', INTERVAL '1' WEEK)",
+            },
+        )
+        self.validate_all(
+            "SELECT TIMESTAMPDIFF(QUARTER, '2009-02-13', '2013-09-01')",
+            read={
+                "singlestore": "SELECT TIMESTAMPDIFF(QUARTER, '2009-02-13', '2013-09-01')",
+                "": "SELECT DATETIME_DIFF('2013-09-01', '2009-02-13', QUARTER)",
+            },
+        )
+        self.validate_all(
+            "SELECT TIMESTAMPDIFF(QUARTER, '2009-02-13', '2013-09-01')",
+            read={
+                "singlestore": "SELECT TIMESTAMPDIFF(QUARTER, '2009-02-13', '2013-09-01')",
+                "bigquery": "SELECT DATE_DIFF('2013-09-01', '2009-02-13', QUARTER)",
+                "duckdb": "SELECT DATE_DIFF('QUARTER', '2009-02-13', '2013-09-01')",
+            },
+        )
+        self.validate_all(
+            "SELECT DATEDIFF(DATE('2013-09-01'), DATE('2009-02-13'))",
+            read={
+                "hive": "SELECT DATEDIFF('2013-09-01', '2009-02-13')",
+                "singlestore": "SELECT DATEDIFF(DATE('2013-09-01'), DATE('2009-02-13'))",
+            },
+        )
+        self.validate_all(
+            "SELECT DATE_TRUNC('MINUTE', '2016-08-08 12:05:31')",
+            read={
+                "": "SELECT TIMESTAMP_TRUNC('2016-08-08 12:05:31', MINUTE)",
+                "singlestore": "SELECT DATE_TRUNC('MINUTE', '2016-08-08 12:05:31')",
+            },
+        )
+        self.validate_all(
+            "SELECT TIMESTAMPDIFF(WEEK, '2009-01-01', '2009-12-31') AS numweeks",
+            read={
+                "redshift": "SELECT datediff(week,'2009-01-01','2009-12-31') AS numweeks",
+                "singlestore": "SELECT TIMESTAMPDIFF(WEEK, '2009-01-01', '2009-12-31') AS numweeks",
+            },
+        )
+        self.validate_all(
+            "SELECT DATEDIFF('2009-12-31', '2009-01-01') AS numweeks",
+            read={
+                "": "SELECT TS_OR_DS_DIFF('2009-12-31', '2009-01-01') AS numweeks",
+                "singlestore": "SELECT DATEDIFF('2009-12-31', '2009-01-01') AS numweeks",
+            },
+        )
+
+    def test_types(self):
+        self.validate_all(
+            "CREATE TABLE testTypes (a DECIMAL(10, 20))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DECIMAL(10, 20))",
+                "bigquery": "CREATE TABLE testTypes (a BIGDECIMAL(10, 20))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a BOOLEAN)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a BOOLEAN)",
+                "tsql": "CREATE TABLE testTypes (a BIT)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a DATE)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DATE)",
+                "clickhouse": "CREATE TABLE testTypes (a DATE32)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a DATETIME)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DATETIME)",
+                "clickhouse": "CREATE TABLE testTypes (a DATETIME64)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a DECIMAL(9, 3))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DECIMAL(9, 3))",
+                "clickhouse": "CREATE TABLE testTypes (a DECIMAL32(3))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a DECIMAL(18, 3))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DECIMAL(18, 3))",
+                "clickhouse": "CREATE TABLE testTypes (a DECIMAL64(3))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a DECIMAL(38, 3))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DECIMAL(38, 3))",
+                "clickhouse": "CREATE TABLE testTypes (a DECIMAL128(3))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a DECIMAL(65, 3))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a DECIMAL(65, 3))",
+                "clickhouse": "CREATE TABLE testTypes (a DECIMAL256(3))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a ENUM('a'))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a ENUM('a'))",
+                "clickhouse": "CREATE TABLE testTypes (a ENUM8('a'))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a ENUM('a'))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a ENUM('a'))",
+                "clickhouse": "CREATE TABLE testTypes (a ENUM16('a'))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a TEXT(2))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a TEXT(2))",
+                "clickhouse": "CREATE TABLE testTypes (a FIXEDSTRING(2))",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a GEOGRAPHY)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a GEOGRAPHY)",
+                "snowflake": "CREATE TABLE testTypes (a GEOMETRY)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a GEOGRAPHYPOINT)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a GEOGRAPHYPOINT)",
+                "clickhouse": "CREATE TABLE testTypes (a POINT)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a GEOGRAPHY)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a GEOGRAPHY)",
+                "clickhouse": "CREATE TABLE testTypes (a RING)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a GEOGRAPHY)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a GEOGRAPHY)",
+                "clickhouse": "CREATE TABLE testTypes (a LINESTRING)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a GEOGRAPHY)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a GEOGRAPHY)",
+                "clickhouse": "CREATE TABLE testTypes (a POLYGON)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a GEOGRAPHY)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a GEOGRAPHY)",
+                "clickhouse": "CREATE TABLE testTypes (a MULTIPOLYGON)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a BSON)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a BSON)",
+                "postgres": "CREATE TABLE testTypes (a JSONB)",
+            },
+        )
+        self.validate_identity("CREATE TABLE testTypes (a TIMESTAMP(6))")
+        self.validate_all(
+            "CREATE TABLE testTypes (a TIMESTAMP)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a TIMESTAMP)",
+                "duckdb": "CREATE TABLE testTypes (a TIMESTAMP_S)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a TIMESTAMP(6))",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a TIMESTAMP(6))",
+                "duckdb": "CREATE TABLE testTypes (a TIMESTAMP_MS)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE testTypes (a BLOB)",
+            read={
+                "singlestore": "CREATE TABLE testTypes (a BLOB)",
+                "": "CREATE TABLE testTypes (a VARBINARY)",
+            },
+        )
+
+    def test_column_with_tablename(self):
+        self.validate_identity("SELECT `t0`.`name` FROM `t0`")
+
+    def test_collate_sql(self):
+        self.validate_all(
+            "SELECT name :> LONGTEXT COLLATE 'utf8mb4_bin' FROM `users`",
+            read={
+                "": "SELECT name COLLATE 'utf8mb4_bin' FROM users",
+            },
+        )
+        self.validate_identity(
+            "SELECT name :> LONGTEXT COLLATE 'utf8mb4_bin' FROM `users`",
+            "SELECT name :> LONGTEXT :> LONGTEXT COLLATE 'utf8mb4_bin' FROM `users`",
         )

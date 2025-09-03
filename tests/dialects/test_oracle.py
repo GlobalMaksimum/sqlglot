@@ -350,6 +350,16 @@ class TestOracle(Validator):
         self.validate_identity(
             "SELECT TO_TIMESTAMP('05 Dec 2000 10:00 P.M.', 'DD Mon YYYY HH12:MI P.M.')"
         )
+        self.validate_identity(
+            "SELECT CUME_DIST(15, 0.05) WITHIN GROUP (ORDER BY col1, col2) FROM t"
+        )
+        self.validate_identity(
+            "SELECT DENSE_RANK(15, 0.05) WITHIN GROUP (ORDER BY col1, col2) FROM t"
+        )
+        self.validate_identity("SELECT RANK(15, 0.05) WITHIN GROUP (ORDER BY col1, col2) FROM t")
+        self.validate_identity(
+            "SELECT PERCENT_RANK(15, 0.05) WITHIN GROUP (ORDER BY col1, col2) FROM t"
+        )
 
     def test_join_marker(self):
         self.validate_identity("SELECT e1.x, e2.x FROM e e1, e e2 WHERE e1.y (+) = e2.y")
@@ -693,6 +703,24 @@ CONNECT BY PRIOR employee_id = manager_id AND LEVEL <= 4"""
         self.validate_identity("GRANT UPDATE, TRIGGER ON TABLE t TO anita, zhi")
         self.validate_identity("GRANT EXECUTE ON PROCEDURE p TO george")
         self.validate_identity("GRANT USAGE ON SEQUENCE order_id TO sales_role")
+
+    def test_revoke(self):
+        revoke_cmds = [
+            "REVOKE purchases_reader_role FROM george, maria",
+            "REVOKE USAGE ON TYPE price FROM finance_role",
+            "REVOKE USAGE ON DERBY AGGREGATE types.maxPrice FROM sales_role",
+        ]
+
+        for sql in revoke_cmds:
+            with self.subTest(f"Testing Oracle's REVOKE command statement: {sql}"):
+                self.validate_identity(sql, check_command_warning=True)
+
+        self.validate_identity("REVOKE SELECT ON TABLE t FROM maria, harry")
+        self.validate_identity("REVOKE SELECT ON TABLE s.v FROM PUBLIC")
+        self.validate_identity("REVOKE SELECT ON TABLE t FROM purchases_reader_role")
+        self.validate_identity("REVOKE UPDATE, TRIGGER ON TABLE t FROM anita, zhi")
+        self.validate_identity("REVOKE EXECUTE ON PROCEDURE p FROM george")
+        self.validate_identity("REVOKE USAGE ON SEQUENCE order_id FROM sales_role")
 
     def test_datetrunc(self):
         self.validate_all(

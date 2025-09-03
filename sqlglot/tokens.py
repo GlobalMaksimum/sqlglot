@@ -376,6 +376,7 @@ class TokenType(AutoName):
     RENAME = auto()
     REPLACE = auto()
     RETURNING = auto()
+    REVOKE = auto()
     REFERENCES = auto()
     RIGHT = auto()
     RLIKE = auto()
@@ -972,6 +973,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "COMMENT": TokenType.COMMENT,
         "EXPLAIN": TokenType.COMMAND,
         "GRANT": TokenType.GRANT,
+        "REVOKE": TokenType.REVOKE,
         "OPTIMIZE": TokenType.COMMAND,
         "PREPARE": TokenType.COMMAND,
         "VACUUM": TokenType.COMMAND,
@@ -1425,7 +1427,7 @@ class Tokenizer(metaclass=_Tokenizer):
         self._advance(len(start))
         text = self._extract_string(end, raw_string=token_type == TokenType.RAW_STRING)
 
-        if base:
+        if base and text:
             try:
                 int(text, base)
             except Exception:

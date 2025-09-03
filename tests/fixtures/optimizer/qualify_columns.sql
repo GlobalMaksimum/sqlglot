@@ -283,6 +283,10 @@ WITH t AS (SELECT 1 AS c) SELECT TO_JSON_STRING(t) AS _col_0 FROM t AS t;
 SELECT DATE_TRUNC(col1, WEEK(MONDAY)), col2 FROM t;
 SELECT DATE_TRUNC(t.col1, WEEK(MONDAY)) AS _col_0, t.col2 AS col2 FROM t AS t;
 
+# execute: false
+SELECT first, second FROM (SELECT 'val' AS col, STACK(2, 1, 2, 3) AS (first, second)) AS tbl;
+SELECT tbl.first AS first, tbl.second AS second FROM (SELECT 'val' AS col, STACK(2, 1, 2, 3) AS (first, second)) AS tbl;
+
 --------------------------------------
 -- Derived tables
 --------------------------------------
@@ -925,6 +929,10 @@ WITH RECURSIVE t AS (SELECT 1 AS c UNION ALL SELECT t.c + 1 AS c FROM t AS t WHE
 # title: expand DISTINCT ON ordinals / projection names
 SELECT DISTINCT ON (new_col, b + 1, 1) t1.a AS new_col FROM x AS t1 ORDER BY new_col;
 SELECT DISTINCT ON (new_col, t1.b + 1, new_col) t1.a AS new_col FROM x AS t1 ORDER BY new_col;
+
+# title: qualify columns for Aggregate Functions and DISTINCT
+SELECT COALESCE(COUNT(DISTINCT a)) AS a FROM x;
+SELECT COALESCE(COUNT(DISTINCT x.a)) AS a FROM x AS x;
 
 # title: Oracle does not support lateral alias expansion
 # dialect: oracle

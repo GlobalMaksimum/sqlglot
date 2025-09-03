@@ -89,6 +89,7 @@ class TestSnowflake(Validator):
         self.validate_identity("SELECT TRIM(COALESCE(TO_CHAR(CAST(c AS TIME)), '')) FROM t")
         self.validate_identity("SELECT GET_PATH(PARSE_JSON(foo), 'bar')")
         self.validate_identity("SELECT GET_PATH(foo, 'bar')")
+        self.validate_identity("SELECT a, exclude, b FROM xxx")
         self.validate_identity(
             "SELECT * FROM table AT (TIMESTAMP => '2024-07-24') UNPIVOT(a FOR b IN (c)) AS pivot_table"
         )
@@ -2858,6 +2859,23 @@ SINGLE = TRUE""",
 
         self.validate_identity(
             "GRANT ALL PRIVILEGES ON FUNCTION mydb.myschema.ADD5(number) TO ROLE analyst"
+        )
+
+    def test_revoke(self):
+        revoke_cmds = [
+            "REVOKE SELECT ON FUTURE TABLES IN DATABASE d1 FROM ROLE r1",
+            "REVOKE INSERT, DELETE ON FUTURE TABLES IN SCHEMA d1.s1 FROM ROLE r2",
+            "REVOKE SELECT ON ALL TABLES IN SCHEMA mydb.myschema FROM ROLE analyst",
+            "REVOKE SELECT, INSERT ON FUTURE TABLES IN SCHEMA mydb.myschema FROM ROLE role1",
+            "REVOKE CREATE MATERIALIZED VIEW ON SCHEMA mydb.myschema FROM DATABASE ROLE mydb.dr1",
+        ]
+
+        for sql in revoke_cmds:
+            with self.subTest(f"Testing Snowflake's REVOKE command statement: {sql}"):
+                self.validate_identity(sql, check_command_warning=True)
+
+        self.validate_identity(
+            "REVOKE ALL PRIVILEGES ON FUNCTION mydb.myschema.ADD5(number) FROM ROLE analyst"
         )
 
     def test_window_function_arg(self):

@@ -844,6 +844,7 @@ class Parser(metaclass=_Parser):
         TokenType.DESCRIBE: lambda self: self._parse_describe(),
         TokenType.DROP: lambda self: self._parse_drop(),
         TokenType.GRANT: lambda self: self._parse_grant(),
+        TokenType.REVOKE: lambda self: self._parse_revoke(),
         TokenType.INSERT: lambda self: self._parse_insert(),
         TokenType.KILL: lambda self: self._parse_kill(),
         TokenType.LOAD: lambda self: self._parse_load(),
@@ -1244,7 +1245,6 @@ class Parser(metaclass=_Parser):
         "OPENJSON": lambda self: self._parse_open_json(),
         "OVERLAY": lambda self: self._parse_overlay(),
         "POSITION": lambda self: self._parse_position(),
-        "PREDICT": lambda self: self._parse_predict(),
         "SAFE_CAST": lambda self: self._parse_cast(False, safe=True),
         "STRING_AGG": lambda self: self._parse_string_agg(),
         "SUBSTRING": lambda self: self._parse_substring(),
@@ -6921,20 +6921,6 @@ class Parser(metaclass=_Parser):
             exp.StrPosition, this=haystack, substr=needle, position=seq_get(args, 2)
         )
 
-    def _parse_predict(self) -> exp.Predict:
-        self._match_text_seq("MODEL")
-        this = self._parse_table()
-
-        self._match(TokenType.COMMA)
-        self._match_text_seq("TABLE")
-
-        return self.expression(
-            exp.Predict,
-            this=this,
-            expression=self._parse_table(),
-            params_struct=self._match(TokenType.COMMA) and self._parse_bitwise(),
-        )
-
     def _parse_join_hint(self, func_name: str) -> exp.JoinHint:
         args = self._parse_csv(self._parse_table)
         return exp.JoinHint(this=func_name.upper(), expressions=args)
@@ -7604,6 +7590,7 @@ class Parser(metaclass=_Parser):
         exists = self._parse_exists()
         only = self._match_text_seq("ONLY")
         this = self._parse_table(schema=True)
+        check = self._match_text_seq("WITH", "CHECK")
         cluster = self._parse_on_property() if self._match(TokenType.ON) else None
 
         if self._next:
@@ -7626,6 +7613,7 @@ class Parser(metaclass=_Parser):
                     options=options,
                     cluster=cluster,
                     not_valid=not_valid,
+                    check=check,
                 )
 
         return self._parse_as_command(start)
@@ -8423,9 +8411,9 @@ class Parser(metaclass=_Parser):
 
         return self.expression(exp.GrantPrincipal, this=principal, kind=kind)
 
-    def _parse_grant(self) -> exp.Grant | exp.Command:
-        start = self._prev
-
+    def _parse_grant_revoke_common(
+        self,
+    ) -> t.Tuple[t.Optional[t.List], t.Optional[str], t.Optional[exp.Expression]]:
         privileges = self._parse_csv(self._parse_grant_privilege)
 
         self._match(TokenType.ON)
@@ -8434,6 +8422,13 @@ class Parser(metaclass=_Parser):
         # Attempt to parse the securable e.g. MySQL allows names
         # such as "foo.*", "*.*" which are not easily parseable yet
         securable = self._try_parse(self._parse_table_parts)
+
+        return privileges, kind, securable
+
+    def _parse_grant(self) -> exp.Grant | exp.Command:
+        start = self._prev
+
+        privileges, kind, securable = self._parse_grant_revoke_common()
 
         if not securable or not self._match_text_seq("TO"):
             return self._parse_as_command(start)
@@ -8452,6 +8447,35 @@ class Parser(metaclass=_Parser):
             securable=securable,
             principals=principals,
             grant_option=grant_option,
+        )
+
+    def _parse_revoke(self) -> exp.Revoke | exp.Command:
+        start = self._prev
+
+        grant_option = self._match_text_seq("GRANT", "OPTION", "FOR")
+
+        privileges, kind, securable = self._parse_grant_revoke_common()
+
+        if not securable or not self._match_text_seq("FROM"):
+            return self._parse_as_command(start)
+
+        principals = self._parse_csv(self._parse_grant_principal)
+
+        cascade = None
+        if self._match_texts(("CASCADE", "RESTRICT")):
+            cascade = self._prev.text.upper()
+
+        if self._curr:
+            return self._parse_as_command(start)
+
+        return self.expression(
+            exp.Revoke,
+            privileges=privileges,
+            kind=kind,
+            securable=securable,
+            principals=principals,
+            grant_option=grant_option,
+            cascade=cascade,
         )
 
     def _parse_overlay(self) -> exp.Overlay:
@@ -8729,3 +8753,36 @@ class Parser(metaclass=_Parser):
             returning=returning,
             on_condition=self._parse_on_condition(),
         )
+
+    def _parse_group_concat(self) -> t.Optional[exp.Expression]:
+        def concat_exprs(
+            node: t.Optional[exp.Expression], exprs: t.List[exp.Expression]
+        ) -> exp.Expression:
+            if isinstance(node, exp.Distinct) and len(node.expressions) > 1:
+                concat_exprs = [
+                    self.expression(exp.Concat, expressions=node.expressions, safe=True)
+                ]
+                node.set("expressions", concat_exprs)
+                return node
+            if len(exprs) == 1:
+                return exprs[0]
+            return self.expression(exp.Concat, expressions=args, safe=True)
+
+        args = self._parse_csv(self._parse_lambda)
+
+        if args:
+            order = args[-1] if isinstance(args[-1], exp.Order) else None
+
+            if order:
+                # Order By is the last (or only) expression in the list and has consumed the 'expr' before it,
+                # remove 'expr' from exp.Order and add it back to args
+                args[-1] = order.this
+                order.set("this", concat_exprs(order.this, args))
+
+            this = order or concat_exprs(args[0], args)
+        else:
+            this = None
+
+        separator = self._parse_field() if self._match(TokenType.SEPARATOR) else None
+
+        return self.expression(exp.GroupConcat, this=this, separator=separator)

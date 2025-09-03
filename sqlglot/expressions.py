@@ -2468,6 +2468,10 @@ class Grant(Expression):
     }
 
 
+class Revoke(Expression):
+    arg_types = {**Grant.arg_types, "cascade": False}
+
+
 class Group(Expression):
     arg_types = {
         "expressions": False,
@@ -2790,6 +2794,11 @@ class BackupProperty(Property):
     arg_types = {"this": True}
 
 
+# https://doris.apache.org/docs/sql-manual/sql-statements/table-and-view/async-materialized-view/CREATE-ASYNC-MATERIALIZED-VIEW/
+class BuildProperty(Property):
+    arg_types = {"this": True}
+
+
 class BlockCompressionProperty(Property):
     arg_types = {
         "autotemp": False,
@@ -3031,9 +3040,30 @@ class PartitionByRangePropertyDynamic(Expression):
     arg_types = {"this": False, "start": True, "end": True, "every": True}
 
 
+# https://doris.apache.org/docs/table-design/data-partitioning/manual-partitioning
+class PartitionByListProperty(Property):
+    arg_types = {"partition_expressions": True, "create_expressions": True}
+
+
+# https://doris.apache.org/docs/table-design/data-partitioning/manual-partitioning
+class PartitionList(Expression):
+    arg_types = {"this": True, "expressions": True}
+
+
+# https://doris.apache.org/docs/sql-manual/sql-statements/table-and-view/async-materialized-view/CREATE-ASYNC-MATERIALIZED-VIEW
+class RefreshTriggerProperty(Property):
+    arg_types = {
+        "method": True,
+        "kind": False,
+        "every": False,
+        "unit": False,
+        "starts": False,
+    }
+
+
 # https://docs.starrocks.io/docs/sql-reference/sql-statements/table_bucket_part_index/CREATE_TABLE/
 class UniqueKeyProperty(Property):
-    arg_types = {"expressions": True, "unique": False}
+    arg_types = {"expressions": True}
 
 
 # https://www.postgresql.org/docs/current/sql-createtable.html
@@ -4304,7 +4334,14 @@ class Select(Query):
 
     @property
     def named_selects(self) -> t.List[str]:
-        return [e.output_name for e in self.expressions if e.alias_or_name]
+        selects = []
+
+        for e in self.expressions:
+            if e.alias_or_name:
+                selects.append(e.output_name)
+            elif isinstance(e, Aliases):
+                selects.extend([a.name for a in e.aliases])
+        return selects
 
     @property
     def is_star(self) -> bool:
@@ -4876,6 +4913,7 @@ class Alter(Expression):
         "options": False,
         "cluster": False,
         "not_valid": False,
+        "check": False,
     }
 
     @property
@@ -5429,6 +5467,11 @@ class ByteLength(Func):
     pass
 
 
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/json_functions#bool_for_json
+class JSONBool(Func):
+    pass
+
+
 class ArrayRemove(Func):
     arg_types = {"this": True, "expression": True}
 
@@ -5455,8 +5498,26 @@ class ApproxTopK(AggFunc):
     arg_types = {"this": True, "expression": False, "counters": False}
 
 
+class ApproxTopSum(AggFunc):
+    arg_types = {"this": True, "expression": True, "count": True}
+
+
+class ApproxQuantiles(AggFunc):
+    arg_types = {"this": True, "expression": False}
+
+
+class FarmFingerprint(Func):
+    arg_types = {"expressions": True}
+    is_var_len_args = True
+    _sql_names = ["FARM_FINGERPRINT", "FARMFINGERPRINT64"]
+
+
 class Flatten(Func):
     pass
+
+
+class Float64(Func):
+    arg_types = {"this": True, "expression": False}
 
 
 # https://spark.apache.org/docs/latest/api/sql/index.html#transform
@@ -5548,6 +5609,10 @@ class ToChar(Func):
     }
 
 
+class ToCodePoints(Func):
+    pass
+
+
 # https://docs.snowflake.com/en/sql-reference/functions/to_decimal
 # https://docs.oracle.com/en/database/oracle/oracle-database/23/sqlrf/TO_NUMBER.html
 class ToNumber(Func):
@@ -5566,6 +5631,10 @@ class ToDouble(Func):
         "this": True,
         "format": False,
     }
+
+
+class CodePointsToBytes(Func):
+    pass
 
 
 class Columns(Func):
@@ -5877,8 +5946,9 @@ class ConcatWs(Concat):
     _sql_names = ["CONCAT_WS"]
 
 
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/string_functions#contains_substr
 class Contains(Func):
-    arg_types = {"this": True, "expression": True}
+    arg_types = {"this": True, "expression": True, "json_scope": False}
 
 
 # https://docs.oracle.com/cd/B13789_01/server.101/b10759/operators004.htm#i1035022
@@ -5933,7 +6003,7 @@ class DateAdd(Func, IntervalOp):
 
 
 class DateBin(Func, IntervalOp):
-    arg_types = {"this": True, "expression": True, "unit": False, "zone": False}
+    arg_types = {"this": True, "expression": True, "unit": False, "zone": False, "origin": False}
 
 
 class DateSub(Func, IntervalOp):
@@ -6040,6 +6110,22 @@ class LastDay(Func, TimeUnit):
     arg_types = {"this": True, "unit": False}
 
 
+class LaxBool(Func):
+    pass
+
+
+class LaxFloat64(Func):
+    pass
+
+
+class LaxInt64(Func):
+    pass
+
+
+class LaxString(Func):
+    pass
+
+
 class Extract(Func):
     arg_types = {"this": True, "expression": True}
 
@@ -6133,6 +6219,11 @@ class DecodeCase(Func):
     is_var_len_args = True
 
 
+class DenseRank(AggFunc):
+    arg_types = {"expressions": False}
+    is_var_len_args = True
+
+
 class DiToDate(Func):
     pass
 
@@ -6193,12 +6284,16 @@ class Floor(Func):
     arg_types = {"this": True, "decimals": False, "to": False}
 
 
+class FromBase32(Func):
+    pass
+
+
 class FromBase64(Func):
     pass
 
 
-class FeaturesAtTime(Func):
-    arg_types = {"this": True, "time": False, "num_rows": False, "ignore_feature_nulls": False}
+class ToBase32(Func):
+    pass
 
 
 class ToBase64(Func):
@@ -6364,8 +6459,18 @@ class FormatJson(Expression):
     pass
 
 
+class Format(Func):
+    arg_types = {"this": True, "expressions": True}
+    is_var_len_args = True
+
+
 class JSONKeyValue(Expression):
     arg_types = {"this": True, "expression": True}
+
+
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/json_functions#json_keys
+class JSONKeysAtDepth(Func):
+    arg_types = {"this": True, "expression": False, "mode": False}
 
 
 class JSONObject(Func):
@@ -6428,6 +6533,23 @@ class JSONSchema(Expression):
     arg_types = {"expressions": True}
 
 
+class JSONSet(Func):
+    arg_types = {"this": True, "expressions": True}
+    is_var_len_args = True
+    _sql_names = ["JSON_SET"]
+
+
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/json_functions#json_strip_nulls
+class JSONStripNulls(Func):
+    arg_types = {
+        "this": True,
+        "expression": False,
+        "include_arrays": False,
+        "remove_empty": False,
+    }
+    _sql_names = ["JSON_STRIP_NULLS"]
+
+
 # https://dev.mysql.com/doc/refman/8.4/en/json-search-functions.html#function_json-value
 class JSONValue(Expression):
     arg_types = {
@@ -6440,6 +6562,12 @@ class JSONValue(Expression):
 
 class JSONValueArray(Func):
     arg_types = {"this": True, "expression": False}
+
+
+class JSONRemove(Func):
+    arg_types = {"this": True, "expressions": True}
+    is_var_len_args = True
+    _sql_names = ["JSON_REMOVE"]
 
 
 # https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/JSON_TABLE.html
@@ -6547,13 +6675,34 @@ class JSONBExtractScalar(Binary, Func):
 
 
 class JSONFormat(Func):
-    arg_types = {"this": False, "options": False, "is_json": False}
+    arg_types = {"this": False, "options": False, "is_json": False, "to_json": False}
     _sql_names = ["JSON_FORMAT"]
+
+
+class JSONArrayAppend(Func):
+    arg_types = {"this": True, "expressions": True}
+    is_var_len_args = True
+    _sql_names = ["JSON_ARRAY_APPEND"]
 
 
 # https://dev.mysql.com/doc/refman/8.0/en/json-search-functions.html#operator_member-of
 class JSONArrayContains(Binary, Predicate, Func):
+    arg_types = {"this": True, "expression": True, "json_type": False}
     _sql_names = ["JSON_ARRAY_CONTAINS"]
+
+
+class JSONArrayInsert(Func):
+    arg_types = {"this": True, "expressions": True}
+    is_var_len_args = True
+    _sql_names = ["JSON_ARRAY_INSERT"]
+
+
+class ParseBignumeric(Func):
+    pass
+
+
+class ParseNumeric(Func):
+    pass
 
 
 class ParseJSON(Func):
@@ -6713,8 +6862,12 @@ class Nvl2(Func):
     arg_types = {"this": True, "true": True, "false": False}
 
 
+class Ntile(AggFunc):
+    arg_types = {"this": False}
+
+
 class Normalize(Func):
-    arg_types = {"this": True, "form": False}
+    arg_types = {"this": True, "form": False, "is_casefold": False}
 
 
 class Overlay(Func):
@@ -6724,6 +6877,29 @@ class Overlay(Func):
 # https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-predict#mlpredict_function
 class Predict(Func):
     arg_types = {"this": True, "expression": True, "params_struct": False}
+
+
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-feature-time
+class FeaturesAtTime(Func):
+    arg_types = {"this": True, "time": False, "num_rows": False, "ignore_feature_nulls": False}
+
+
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-generate-embedding
+class GenerateEmbedding(Func):
+    arg_types = {"this": True, "expression": True, "params_struct": False}
+
+
+# https://cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search
+class VectorSearch(Func):
+    arg_types = {
+        "this": True,
+        "column_to_search": True,
+        "query_table": True,
+        "query_column_to_search": False,
+        "top_k": False,
+        "distance_type": False,
+        "options": False,
+    }
 
 
 class Pow(Binary, Func):
@@ -6738,12 +6914,23 @@ class PercentileDisc(AggFunc):
     arg_types = {"this": True, "expression": False}
 
 
+class PercentRank(AggFunc):
+    arg_types = {"expressions": False}
+    is_var_len_args = True
+
+
 class Quantile(AggFunc):
     arg_types = {"this": True, "quantile": True}
 
 
 class ApproxQuantile(Quantile):
-    arg_types = {"this": True, "quantile": True, "accuracy": False, "weight": False}
+    arg_types = {
+        "this": True,
+        "quantile": True,
+        "accuracy": False,
+        "weight": False,
+        "error_tolerance": False,
+    }
 
 
 class Quarter(Func):
@@ -6763,6 +6950,11 @@ class Randn(Func):
 
 class RangeN(Func):
     arg_types = {"this": True, "expressions": True, "each": False}
+
+
+class Rank(AggFunc):
+    arg_types = {"expressions": False}
+    is_var_len_args = True
 
 
 class ReadCSV(Func):
@@ -6816,6 +7008,18 @@ class RegexpILike(Binary, Func):
     arg_types = {"this": True, "expression": True, "flag": False}
 
 
+class RegexpInstr(Func):
+    arg_types = {
+        "this": True,
+        "expression": True,
+        "position": False,
+        "occurrence": False,
+        "option": False,
+        "parameters": False,
+        "group": False,
+    }
+
+
 # https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.split.html
 # limit is the number of times a pattern is applied
 class RegexpSplit(Func):
@@ -6843,6 +7047,10 @@ class RowNumber(Func):
 
 class SafeDivide(Func):
     arg_types = {"this": True, "expression": True}
+
+
+class SafeConvertBytesToString(Func):
+    pass
 
 
 class SHA(Func):
@@ -7152,6 +7360,12 @@ class Upper(Func):
 
 class Corr(Binary, AggFunc):
     pass
+
+
+# https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/CUME_DIST.html
+class CumeDist(AggFunc):
+    arg_types = {"expressions": False}
+    is_var_len_args = True
 
 
 class Variance(AggFunc):

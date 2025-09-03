@@ -60,8 +60,10 @@ class TestTSQL(Validator):
             "COPY INTO test_1 FROM 'path' WITH (FORMAT_NAME = test, FILE_TYPE = 'CSV', CREDENTIAL = (IDENTITY='Shared Access Signature', SECRET='token'), FIELDTERMINATOR = ';', ROWTERMINATOR = '0X0A', ENCODING = 'UTF8', DATEFORMAT = 'ymd', MAXERRORS = 10, ERRORFILE = 'errorsfolder', IDENTITY_INSERT = 'ON')"
         )
         self.validate_identity(
-            "WITH t1 AS (SELECT 1 AS a), t2 AS (SELECT 1 AS a) SELECT TOP 10 a FROM t1 UNION ALL SELECT TOP 10 a FROM t2 ORDER BY a DESC",
-            "WITH t1 AS (SELECT 1 AS a), t2 AS (SELECT 1 AS a) SELECT * FROM (SELECT TOP 10 a FROM t1 UNION ALL SELECT TOP 10 a FROM t2) AS _l_0 ORDER BY a DESC",
+            "WITH t1 AS (SELECT 1 AS a), t2 AS (SELECT 1 AS a) SELECT TOP 10 a FROM t1 UNION ALL SELECT TOP 10 a FROM t2 ORDER BY a DESC"
+        )
+        self.validate_identity(
+            "WITH t1 AS (SELECT 1 AS a), t2 AS (SELECT 1 AS a) SELECT COUNT(*) FROM (SELECT TOP 10 a FROM t1 UNION ALL SELECT TOP 10 a FROM t2 ORDER BY a DESC) AS t"
         )
         self.validate_identity(
             'SELECT 1 AS "[x]"',
@@ -1010,6 +1012,9 @@ FOR XML
         self.validate_identity("ALTER TABLE tbl SET (FILESTREAM_ON = 'test')")
         self.validate_identity("ALTER TABLE tbl SET (DATA_DELETION=ON)")
         self.validate_identity("ALTER TABLE tbl SET (DATA_DELETION=OFF)")
+        self.validate_identity(
+            "ALTER TABLE t1 WITH CHECK ADD CONSTRAINT ctr FOREIGN KEY (c1) REFERENCES t2 (c2)"
+        )
         self.validate_identity(
             "ALTER TABLE tbl SET (SYSTEM_VERSIONING=ON(HISTORY_TABLE=db.tbl, DATA_CONSISTENCY_CHECK=OFF, HISTORY_RETENTION_PERIOD=5 DAYS))"
         )
@@ -2275,6 +2280,10 @@ FROM OPENJSON(@json) WITH (
         self.validate_identity(
             "GRANT EXECUTE ON TestProc TO User2 AS TesterRole", check_command_warning=True
         )
+
+    def test_revoke(self):
+        self.validate_identity("REVOKE EXECUTE ON TestProc FROM User2")
+        self.validate_identity("REVOKE EXECUTE ON TestProc FROM TesterRole")
 
     def test_parsename(self):
         for i in range(4):

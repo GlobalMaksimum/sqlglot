@@ -52,6 +52,9 @@ ARRAY<DOUBLE>;
 ARRAY_SLICE([1, 1.5], 1, 2);
 ARRAY<DOUBLE>;
 
+FROM_BASE32(tbl.str_col);
+BINARY;
+
 FROM_BASE64(tbl.str_col);
 BINARY;
 
@@ -69,6 +72,9 @@ BIGINT;
 
 LAST_VALUE(tbl.bigint_col) OVER (ORDER BY tbl.bigint_col);
 BIGINT;
+
+TO_BASE32(tbl.bytes_col);
+VARCHAR;
 
 TO_BASE64(tbl.bytes_col);
 VARCHAR;
@@ -654,7 +660,15 @@ JSON_VALUE(JSON '{"foo": "1" }', '$.foo');
 STRING;
 
 # dialect: bigquery
+JSON_EXTRACT_SCALAR(JSON '["a","b"]');
+STRING;
+
+# dialect: bigquery
 JSON_VALUE_ARRAY(JSON '["a","b"]');
+ARRAY<STRING>;
+
+# dialect: bigquery
+JSON_EXTRACT_STRING_ARRAY(JSON '["a","b"]');
 ARRAY<STRING>;
 
 # dialect: bigquery
@@ -792,6 +806,430 @@ BIGINT;
 # dialect: bigquery
 GROUPING(tbl.bigint_col);
 BIGINT;
+
+# dialect: bigquery
+FARM_FINGERPRINT('foo');
+BIGINT;
+
+# dialect: bigquery
+FARM_FINGERPRINT(b'foo');
+BIGINT;
+
+# dialect: bigquery
+APPROX_TOP_COUNT(tbl.str_col, 2);
+ARRAY<STRUCT<STRING, BIGINT>>;
+
+# dialect: bigquery
+APPROX_TOP_COUNT(tbl.bigint_col, 2);
+ARRAY<STRUCT<BIGINT, BIGINT>>;
+
+# dialect: bigquery
+APPROX_TOP_SUM(tbl.str_col, 1.5, 2);
+ARRAY<STRUCT<STRING, BIGINT>>;
+
+# dialect: bigquery
+APPROX_TOP_SUM(tbl.bigint_col, 1.5, 2);
+ARRAY<STRUCT<BIGINT, BIGINT>>;
+
+# dialect: bigquery
+APPROX_QUANTILES(tbl.bigint_col, 2);
+ARRAY<BIGINT>;
+
+# dialect: bigquery
+APPROX_QUANTILES(tbl.str_col, 2);
+ARRAY<STRING>;
+
+# dialect: bigquery
+APPROX_QUANTILES(DISTINCT tbl.bigint_col, 2);
+ARRAY<BIGINT>;
+
+# dialect: bigquery
+APPROX_QUANTILES(DISTINCT tbl.str_col, 2);
+ARRAY<STRING>;
+
+# dialect: bigquery
+SAFE_CONVERT_BYTES_TO_STRING(b'\xc2');
+STRING;
+
+# dialect: bigquery
+FROM_HEX('foo');
+BINARY;
+
+# dialect: bigquery
+TO_HEX(b'foo');
+STRING;
+
+# dialect: bigquery
+TO_CODE_POINTS('foo');
+ARRAY<BIGINT>;
+
+# dialect: bigquery
+TO_CODE_POINTS(b'\x66\x6f\x6f');
+ARRAY<BIGINT>;
+
+# dialect: bigquery
+CODE_POINTS_TO_BYTES([65, 98]);
+BINARY;
+
+# dialect: bigquery
+PARSE_BIGNUMERIC('1.2');
+BIGDECIMAL;
+
+# dialect: bigquery
+PARSE_NUMERIC('1.2');
+DECIMAL;
+
+# dialect: bigquery
+BOOL(PARSE_JSON('true'));
+BOOLEAN;
+
+# dialect: bigquery
+FLOAT64(PARSE_JSON('9.8'));
+FLOAT64;
+
+# dialect: bigquery
+FLOAT64(PARSE_JSON('9.8'), wide_number_mode => 'round');
+FLOAT64;
+
+# dialect: bigquery
+CONTAINS_SUBSTR('aa', 'a');
+BOOLEAN;
+
+# dialect: bigquery
+CONTAINS_SUBSTR(PARSE_JSON('{"lunch":"soup"}'), 'lunch', json_scope => 'JSON_VALUES');
+BOOLEAN;
+
+# dialect: bigquery
+NORMALIZE('\u00ea');
+STRING;
+
+# dialect: bigquery
+NORMALIZE('\u00ea', NFKC);
+STRING;
+
+# dialect: bigquery
+NORMALIZE_AND_CASEFOLD('\u00ea', NFKC);
+STRING;
+
+# dialect: bigquery
+NORMALIZE_AND_CASEFOLD('\u00ea', NFKC);
+STRING;
+
+# dialect: bigquery
+OCTET_LENGTH("foo");
+BIGINT;
+
+# dialect: bigquery
+REGEXP_INSTR('ab@cd-ef', '@[^-]*');
+BIGINT;
+
+# dialect: bigquery
+REGEXP_INSTR('a@cd-ef', '@[^-]*', 1, 1, 0);
+BIGINT;
+
+# dialect: bigquery
+ROW_NUMBER() OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+FIRST_VALUE(tbl.bigint_col) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+FIRST_VALUE(tbl.str_col) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+FIRST_VALUE(tbl.bigint_col RESPECT NULLS) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+FIRST_VALUE(tbl.bigint_col IGNORE NULLS) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+FIRST_VALUE(tbl.str_col RESPECT NULLS) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+FIRST_VALUE(tbl.str_col IGNORE NULLS) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+NTH_VALUE(tbl.bigint_col, 2) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+NTH_VALUE(tbl.str_col, 2) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+NTH_VALUE(tbl.bigint_col, 2 RESPECT NULLS) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+NTH_VALUE(tbl.str_col, 2 RESPECT NULLS) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+NTH_VALUE(tbl.bigint_col, 2 IGNORE NULLS) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+NTH_VALUE(tbl.str_col, 2 IGNORE NULLS) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+PERCENTILE_DISC(tbl.bigint_col, 0.5) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+PERCENTILE_DISC(tbl.str_col, 0.5) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+PERCENTILE_DISC(tbl.bigint_col, 0.5 RESPECT NULLS) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+PERCENTILE_DISC(tbl.str_col, 0.5 RESPECT NULLS) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+PERCENTILE_DISC(tbl.bigint_col, 0.5 IGNORE NULLS) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+PERCENTILE_DISC(tbl.str_col, 0.5 IGNORE NULLS) OVER (ORDER BY 1);
+STRING;
+
+# dialect: bigquery
+LEAD(tbl.bigint_col);
+BIGINT;
+
+# dialect: bigquery
+LEAD(tbl.str_col);
+STRING;
+
+# dialect: bigquery
+LEAD(tbl.bigint_col, 2);
+BIGINT;
+
+# dialect: bigquery
+LEAD(tbl.str_col, 2);
+STRING;
+
+# dialect: bigquery
+FORMAT('%f %E %f %f', 1.1, 2.2, 3.4, 4.4);
+STRING;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS NUMERIC), CAST(1 AS NUMERIC)) OVER (ORDER BY 1);
+NUMERIC;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS NUMERIC), CAST(1 AS BIGNUMERIC)) OVER (ORDER BY 1);
+BIGNUMERIC;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS NUMERIC), CAST(1 AS FLOAT64)) OVER (ORDER BY 1);
+FLOAT64;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS BIGNUMERIC), CAST(1 AS NUMERIC)) OVER (ORDER BY 1);
+BIGNUMERIC;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS BIGNUMERIC), CAST(1 AS BIGNUMERIC)) OVER (ORDER BY 1);
+BIGNUMERIC;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS BIGNUMERIC), CAST(1 AS FLOAT64)) OVER (ORDER BY 1);
+FLOAT64;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS FLOAT64), CAST(1 AS NUMERIC)) OVER (ORDER BY 1);
+FLOAT64;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS FLOAT64), CAST(1 AS BIGNUMERIC)) OVER (ORDER BY 1);
+FLOAT64;
+
+# dialect: bigquery
+PERCENTILE_CONT(CAST(1 AS FLOAT64), CAST(1 AS FLOAT64)) OVER (ORDER BY 1);
+FLOAT64;
+
+# dialect: bigquery
+CUME_DIST() OVER (ORDER BY 1);
+DOUBLE;
+
+# dialect: bigquery
+DENSE_RANK() OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+NTILE(1) OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+RANK() OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: bigquery
+PERCENT_RANK() OVER (ORDER BY 1);
+DOUBLE;
+
+# dialect: bigquery
+JSON_OBJECT('foo', 10, 'bar', TRUE);
+JSON;
+
+# dialect: bigquery
+JSON_QUERY('{"fruits": ["apples", "oranges", "grapes"]}', '$.fruits');
+STRING;
+
+# dialect: bigquery
+JSON_QUERY(JSON_OBJECT('fruits', ['apples', 'oranges', 'grapes']), '$.fruits');
+JSON;
+
+# dialect: bigquery
+JSON_EXTRACT('{"fruits": ["apples", "oranges", "grapes"]}', '$.fruits');
+STRING;
+
+# dialect: bigquery
+JSON_EXTRACT(JSON_OBJECT('fruits', ['apples', 'oranges', 'grapes']), '$.fruits');
+JSON;
+
+# dialect: bigquery
+JSON_QUERY_ARRAY('{"fruits": ["apples", "oranges", "grapes"]}', '$.fruits');
+ARRAY<STRING>;
+
+# dialect: bigquery
+JSON_QUERY_ARRAY(JSON_OBJECT('fruits', ['apples', 'oranges', 'grapes']), '$.fruits');
+ARRAY<JSON>;
+
+# dialect: bigquery
+JSON_EXTRACT_ARRAY('{"fruits": ["apples", "oranges", "grapes"]}', '$.fruits');
+ARRAY<STRING>;
+
+# dialect: bigquery
+JSON_EXTRACT_ARRAY(JSON_OBJECT('fruits', ['apples', 'oranges', 'grapes']), '$.fruits');
+ARRAY<JSON>;
+
+# dialect: bigquery
+JSON_ARRAY_APPEND(PARSE_JSON('["a", "b", "c"]'), '$', 1);
+JSON;
+
+# dialect: bigquery
+JSON_ARRAY_APPEND(PARSE_JSON('["a", "b", "c"]'), '$', [1, 2], append_each_element => FALSE);
+JSON;
+
+# dialect: bigquery
+JSON_ARRAY_INSERT(PARSE_JSON('["a", ["b", "c"], "d"]'), '$[1]', 1);
+JSON;
+
+# dialect: bigquery
+JSON_ARRAY_INSERT(PARSE_JSON('["a", "b", "c"]'), '$[1]', [1, 2], insert_each_element => FALSE);
+JSON;
+
+# dialect: bigquery
+JSON_ARRAY_INSERT(PARSE_JSON('["a", ["b", "c"], "d"]'), '$[1]', 1);
+JSON;
+
+# dialect: bigquery
+JSON_ARRAY_INSERT(PARSE_JSON('["a", "b", "c"]'), '$[1]', [1, 2], insert_each_element => FALSE);
+JSON;
+
+# dialect: bigquery
+JSON_KEYS(PARSE_JSON('{"a": {"b":1}}'));
+ARRAY<STRING>;
+
+# dialect: bigquery
+JSON_KEYS(PARSE_JSON('{"a": {"b":1}}'), 1);
+ARRAY<STRING>;
+
+# dialect: bigquery
+JSON_KEYS(PARSE_JSON('{"a": {"b":1}}'), 1, node => 'lax');
+ARRAY<STRING>;
+
+# dialect: bigquery
+JSON_REMOVE(PARSE_JSON('["a", ["b", "c"], "d"]'), '$[1]', '$[1]');
+JSON;
+
+# dialect: bigquery
+JSON_SET(PARSE_JSON('{"a": 1}'), '$', PARSE_JSON('{"b": 2, "c": 3}'));
+JSON;
+
+# dialect: bigquery
+JSON_SET(PARSE_JSON('{"a": 1}'), '$.b', 999, create_if_missing => FALSE);
+JSON;
+
+# dialect: bigquery
+JSON_STRIP_NULLS(PARSE_JSON('[1, null, 2, null, [null]]'));
+JSON;
+
+# dialect: bigquery
+JSON_STRIP_NULLS(PARSE_JSON('[1, null, 2, null]'), include_arrays => FALSE);
+JSON;
+
+# dialect: bigquery
+JSON_STRIP_NULLS(PARSE_JSON('{"a": {"b": {"c": null}}, "d": [null], "e": [], "f": 1}'), include_arrays => FALSE, remove_empty => TRUE);
+JSON;
+
+# dialect: bigquery
+LAX_BOOL(PARSE_JSON('true'));
+BOOLEAN;
+
+# dialect: bigquery
+LAX_FLOAT64(PARSE_JSON('9.8'));
+DOUBLE;
+
+# dialect: bigquery
+LAX_INT64(PARSE_JSON('10'));
+BIGINT;
+
+# dialect: bigquery
+LAX_STRING(PARSE_JSON('"str"'));
+STRING;
+
+# dialect: bigquery
+TO_JSON_STRING(STRUCT(1 AS id, [10, 20] AS cords));
+STRING;
+
+# dialect: bigquery
+TO_JSON(STRUCT(1 AS id, [10, 20] AS cords));
+JSON;
+
+# dialect: bigquery
+ABS(CAST(-1 AS INT64));
+INT64;
+
+# dialect: bigquery
+ABS(CAST(-1 AS NUMERIC));
+NUMERIC;
+
+# dialect: bigquery
+ABS(CAST(1 AS BIGNUMERIC));
+BIGNUMERIC;
+
+# dialect: bigquery
+ABS(CAST(1 AS FLOAT64));
+FLOAT64;
+
+# dialect: bigquery
+IS_INF(1);
+BOOLEAN;
+
+# dialect: bigquery
+IS_NAN(1);
+BOOLEAN;
+
+# dialect: bigquery
+CBRT(27);
+DOUBLE;
+
+# dialect: bigquery
+RAND();
+DOUBLE;
 
 --------------------------------------
 -- Snowflake
