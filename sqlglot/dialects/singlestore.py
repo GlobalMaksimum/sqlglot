@@ -4,6 +4,7 @@ import typing as t
 from sqlglot import exp
 from sqlglot.dialects.dialect import (
     build_formatted_time,
+    NormalizationStrategy,
     build_json_extract_path,
     json_extract_segments,
     json_path_key_only_name,
@@ -33,6 +34,7 @@ def cast_to_time6(expression: t.Optional[exp.Expression]) -> exp.Cast:
 class SingleStore(MySQL):
     SUPPORTS_ORDER_BY_ALL = True
 
+    NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_INSENSITIVE
     TIME_MAPPING: t.Dict[str, str] = {
         "D": "%u",  # Day of week (1-7)
         "DD": "%d",  # day of month (01-31)
