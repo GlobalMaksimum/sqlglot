@@ -728,5 +728,16 @@ class TestSingleStore(Validator):
             },
         )
 
+    def test_with_hints(self):
+        # Test SingleStore WITH hint syntax  
+        self.validate_identity(
+            "SELECT WITH (no_merge_this_select=true) card_id FROM table1",
+            "SELECT card_id FROM table1"
+        )
+        self.validate_identity(
+            "SELECT WITH (hint1=value1, hint2=value2) col1, col2 FROM table1",
+            "SELECT col1, col2 FROM table1"
+        )
+
     def test_column_with_tablename(self):
         self.validate_identity("SELECT `t0`.`name` FROM `t0`")

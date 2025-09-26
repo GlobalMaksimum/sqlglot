@@ -228,6 +228,31 @@ class SingleStore(MySQL):
         COLUMN_OPERATORS.pop(TokenType.DHASH_ARROW)
         COLUMN_OPERATORS.pop(TokenType.PLACEHOLDER)
 
+        def _parse_projections(self):
+            # Handle SingleStore WITH (hint) syntax before projections
+            hint_expressions = None
+            if self._match_pair(TokenType.WITH, TokenType.L_PAREN):
+                # Parse the hint expressions inside WITH (...)
+                hint_expressions = self._parse_csv(
+                    lambda: self._parse_assignment() or self._parse_var(any_token=True)
+                )
+                self._match_r_paren()
+                # Store hint for later use
+                self._singlestore_hints = hint_expressions
+            
+            # Call parent to parse normal projections
+            return super()._parse_projections()
+
+        def _parse_hint(self):
+            # Check for SingleStore hints stored during projection parsing
+            if hasattr(self, '_singlestore_hints') and self._singlestore_hints:
+                hint_exprs = self._singlestore_hints
+                delattr(self, '_singlestore_hints')  # Clear after use
+                return self.expression(exp.WithTableHint, expressions=hint_exprs)
+            
+            # Fall back to parent implementation
+            return super()._parse_hint()
+
     class Generator(MySQL.Generator):
         SUPPORTED_JSON_PATH_PARTS = {
             exp.JSONPathKey,
