@@ -60,6 +60,7 @@ class SingleStore(MySQL):
             **MySQL.Tokenizer.KEYWORDS,
             "BSON": TokenType.JSONB,
             "GEOGRAPHYPOINT": TokenType.GEOGRAPHYPOINT,
+            "MINUS": TokenType.EXCEPT,
             "TIMESTAMP": TokenType.TIMESTAMP,
             ":>": TokenType.COLON_GT,
             "!:>": TokenType.NCOLON_GT,
@@ -1533,6 +1534,44 @@ class SingleStore(MySQL):
             "zerofill",
             "zone",
         }
+
+        def set_operation(self, expression: exp.SetOperation) -> str:
+            # Override the default set_operation to use MINUS instead of EXCEPT for SingleStore
+            if isinstance(expression, exp.Except):
+                op_type = type(expression)
+                op_name = "MINUS"  # Use MINUS instead of EXCEPT for SingleStore
+
+                distinct = expression.args.get("distinct")
+                if (
+                    distinct is False
+                    and op_type in (exp.Except, exp.Intersect)
+                    and not self.EXCEPT_INTERSECT_SUPPORT_ALL_CLAUSE
+                ):
+                    self.unsupported(f"{op_name} ALL is not supported")
+
+                default_distinct = self.dialect.SET_OP_DISTINCT_BY_DEFAULT[op_type]
+
+                if distinct is None:
+                    distinct = default_distinct
+                    if distinct is None:
+                        self.unsupported(f"{op_name} requires DISTINCT or ALL to be specified")
+
+                if distinct is default_distinct:
+                    distinct_or_all = ""
+                else:
+                    distinct_or_all = " DISTINCT" if distinct else " ALL"
+
+                side_kind = " ".join(filter(None, [expression.side, expression.kind]))
+                side_kind = f"{side_kind} " if side_kind else ""
+
+                by_name = " BY NAME" if expression.args.get("by_name") else ""
+                on = self.expressions(expression, key="on", flat=True)
+                on = f" ON ({on})" if on else ""
+
+                return f"{side_kind}{op_name}{distinct_or_all}{by_name}{on}"
+            else:
+                # For all other set operations, use the default behavior
+                return super().set_operation(expression)
 
         def jsonextractscalar_sql(self, expression: exp.JSONExtractScalar) -> str:
             json_type = expression.args.get("json_type")

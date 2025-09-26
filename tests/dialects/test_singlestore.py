@@ -683,5 +683,50 @@ class TestSingleStore(Validator):
             },
         )
 
+    def test_minus_query(self):
+        # Test basic MINUS support
+        self.validate_identity("SELECT id FROM table1 MINUS SELECT id FROM table2")
+        
+        # Test MINUS ALL
+        self.validate_identity("SELECT id FROM table1 MINUS ALL SELECT id FROM table2")
+        
+        # Test multiple MINUS operations
+        self.validate_identity("SELECT id FROM table1 MINUS SELECT id FROM table2 MINUS SELECT id FROM table3")
+        
+        # Test MINUS with complex queries
+        self.validate_identity(
+            "SELECT id, name FROM `users` WHERE age > 18 MINUS SELECT id, name FROM `inactive_users`"
+        )
+        
+        # Test transpilation from EXCEPT to MINUS
+        self.validate_all(
+            "SELECT id FROM table1 EXCEPT SELECT id FROM table2",
+            write={
+                "singlestore": "SELECT id FROM table1 MINUS SELECT id FROM table2",
+            },
+        )
+        
+        # Test transpilation from other dialects to SingleStore
+        self.validate_all(
+            "SELECT id FROM table1 EXCEPT SELECT id FROM table2",
+            write={
+                "singlestore": "SELECT id FROM table1 MINUS SELECT id FROM table2",
+                "postgres": "SELECT id FROM table1 EXCEPT SELECT id FROM table2",
+                "mysql": "SELECT id FROM table1 EXCEPT SELECT id FROM table2",
+            },
+        )
+        
+        # Test transpilation TO other dialects (should convert MINUS back to EXCEPT)
+        self.validate_all(
+            "SELECT id FROM table1 MINUS SELECT id FROM table2",
+            read={
+                "singlestore": "SELECT id FROM table1 MINUS SELECT id FROM table2",
+            },
+            write={
+                "postgres": "SELECT id FROM table1 EXCEPT SELECT id FROM table2",
+                "mysql": "SELECT id FROM table1 EXCEPT SELECT id FROM table2",
+            },
+        )
+
     def test_column_with_tablename(self):
         self.validate_identity("SELECT `t0`.`name` FROM `t0`")
