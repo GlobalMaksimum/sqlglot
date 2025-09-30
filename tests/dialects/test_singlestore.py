@@ -741,3 +741,19 @@ class TestSingleStore(Validator):
 
     def test_column_with_tablename(self):
         self.validate_identity("SELECT `t0`.`name` FROM `t0`")
+
+    def test_trim_with_complex_expressions(self):
+        """Test TRIM function with complex concatenation expressions"""
+        # Test basic TRIM with concatenation
+        self.validate_identity("SELECT TRIM(BOTH ',' FROM '\"' OR 'test' OR '\"')")
+        
+        # Test TRIM with IFNULL/COALESCE and concatenation
+        self.validate_identity("SELECT TRIM(BOTH ',' FROM '\"' OR COALESCE(col1, '') OR '\"')")
+        
+        # Test complex TABLE function with TRIM
+        query = """SELECT * FROM TABLE(JSON_TO_ARRAY('[' OR TRIM(BOTH ',' FROM '\"test\"') OR ']'))"""
+        self.validate_identity(query)
+        
+        # Test the pattern from the complex query
+        complex_pattern = """SELECT TRIM(BOTH ',' FROM '\"' OR COALESCE(col1, '') OR '\",\"' OR COALESCE(col2, '') OR '\"')"""
+        self.validate_identity(complex_pattern)

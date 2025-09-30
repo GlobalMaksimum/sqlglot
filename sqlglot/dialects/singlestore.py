@@ -69,6 +69,12 @@ class SingleStore(MySQL):
         }
 
     class Parser(MySQL.Parser):
+        FUNCTION_PARSERS = {
+            **MySQL.Parser.FUNCTION_PARSERS,
+            # Override TRIM to handle complex expressions properly
+            "TRIM": lambda self: self._parse_trim_singlestore(),
+        }
+        
         FUNCTIONS = {
             **MySQL.Parser.FUNCTIONS,
             "TO_DATE": build_formatted_time(exp.TsOrDsToDate, "singlestore"),
@@ -197,6 +203,33 @@ class SingleStore(MySQL):
                 merge=seq_get(args, 2),
             ),
         }
+
+        def _parse_trim_singlestore(self) -> exp.Trim:
+            """Custom TRIM parser for SingleStore that handles complex expressions"""
+            position = None
+            collation = None
+            expression = None
+
+            if self._match_texts(self.TRIM_TYPES):
+                position = self._prev.text.upper() if self._prev else None
+
+            # Use _parse_assignment instead of _parse_bitwise for better expression handling
+            this = self._parse_assignment()
+            if self._match_set((TokenType.FROM, TokenType.COMMA)):
+                prev_token = self._prev
+                invert_order = (prev_token and prev_token.token_type == TokenType.FROM) or self.TRIM_PATTERN_FIRST
+                # Use _parse_assignment for complex expressions like concatenations
+                expression = self._parse_assignment()
+
+                if invert_order:
+                    this, expression = expression, this
+
+            if self._match(TokenType.COLLATE):
+                collation = self._parse_assignment()
+
+            return self.expression(
+                exp.Trim, this=this, position=position, expression=expression, collation=collation
+            )
 
         CAST_COLUMN_OPERATORS = {TokenType.COLON_GT, TokenType.NCOLON_GT}
 
