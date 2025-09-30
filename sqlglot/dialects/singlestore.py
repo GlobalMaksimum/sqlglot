@@ -60,6 +60,7 @@ class SingleStore(MySQL):
             **MySQL.Tokenizer.KEYWORDS,
             "BSON": TokenType.JSONB,
             "GEOGRAPHYPOINT": TokenType.GEOGRAPHYPOINT,
+            "LONG VARBINARY": TokenType.VARBINARY,
             "MINUS": TokenType.EXCEPT,
             "TIMESTAMP": TokenType.TIMESTAMP,
             ":>": TokenType.COLON_GT,

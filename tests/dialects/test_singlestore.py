@@ -757,3 +757,34 @@ class TestSingleStore(Validator):
         # Test the pattern from the complex query
         complex_pattern = """SELECT TRIM(BOTH ',' FROM '\"' OR COALESCE(col1, '') OR '\",\"' OR COALESCE(col2, '') OR '\"')"""
         self.validate_identity(complex_pattern)
+
+    def test_approx_count_distinct_functions(self):
+        """Test APPROX_COUNT_DISTINCT family of functions"""
+        # Test basic APPROX_COUNT_DISTINCT functions
+        self.validate_identity("SELECT APPROX_COUNT_DISTINCT(col1)")
+        self.validate_identity("SELECT APPROX_COUNT_DISTINCT_ACCUMULATE(member_id)")
+        self.validate_identity("SELECT APPROX_COUNT_DISTINCT_COMBINE(musteri_no_syn)")
+        self.validate_identity("SELECT APPROX_COUNT_DISTINCT_ESTIMATE(col1)")
+        
+        # Test in complex query context
+        complex_query = """SELECT APPROX_COUNT_DISTINCT_COMBINE(musteri_no_syn) AS musteri_no_syn, APPROX_COUNT_DISTINCT_COMBINE(mobil_mus_syn) AS mobil_mus_syn FROM table1"""
+        self.validate_identity(complex_query)
+
+    def test_long_varbinary_datatype(self):
+        """Test LONG VARBINARY data type support"""
+        # Test that LONG VARBINARY can be parsed (the main fix)
+        # Note: VARBINARY without size gets converted to BLOB in output
+        self.validate_all(
+            "SELECT NULL :> VARBINARY AS test_col",
+            write={
+                "singlestore": "SELECT NULL :> BLOB AS test_col",
+            },
+        )
+        
+        # Test LONG VARBINARY in complex expressions
+        self.validate_all(
+            "SELECT NULL :> VARBINARY AS col1, APPROX_COUNT_DISTINCT_ACCUMULATE(id) AS col2",
+            write={
+                "singlestore": "SELECT NULL :> BLOB AS col1, APPROX_COUNT_DISTINCT_ACCUMULATE(id) AS col2",
+            },
+        )
