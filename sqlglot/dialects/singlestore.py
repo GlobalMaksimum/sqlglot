@@ -1,29 +1,33 @@
 import re
-
-from sqlglot import TokenType
 import typing as t
 
-from sqlglot import exp
+from sqlglot import TokenType, exp
 from sqlglot.dialects.dialect import (
+    bool_xor_sql,
     build_formatted_time,
     build_json_extract_path,
+    count_if_to_sum,
+    date_add_interval_sql,
     json_extract_segments,
     json_path_key_only_name,
     rename_func,
-    bool_xor_sql,
-    count_if_to_sum,
-    timestamptrunc_sql,
-    date_add_interval_sql,
     timestampdiff_sql,
+    timestamptrunc_sql,
 )
-from sqlglot.dialects.mysql import MySQL, _remove_ts_or_ds_to_date, date_add_sql, _show_parser
+from sqlglot.dialects.mysql import (
+    MySQL,
+    _remove_ts_or_ds_to_date,
+    _show_parser,
+    date_add_sql,
+)
 from sqlglot.expressions import DataType
 from sqlglot.generator import unsupported_args
 from sqlglot.helper import seq_get
 
 
 def cast_to_time6(
-    expression: t.Optional[exp.Expression], time_type: DataType.Type = exp.DataType.Type.TIME
+    expression: t.Optional[exp.Expression],
+    time_type: DataType.Type = exp.DataType.Type.TIME,
 ) -> exp.Cast:
     return exp.Cast(
         this=expression,
@@ -36,7 +40,7 @@ def cast_to_time6(
 
 class SingleStore(MySQL):
     SUPPORTS_ORDER_BY_ALL = True
-
+    NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_INSENSITIVE
     TIME_MAPPING: t.Dict[str, str] = {
         "D": "%u",  # Day of week (1-7)
         "DD": "%d",  # day of month (01-31)
@@ -73,6 +77,8 @@ class SingleStore(MySQL):
             **MySQL.Tokenizer.KEYWORDS,
             "BSON": TokenType.JSONB,
             "GEOGRAPHYPOINT": TokenType.GEOGRAPHYPOINT,
+            "LONG VARBINARY": TokenType.VARBINARY,
+            "MINUS": TokenType.EXCEPT,
             "TIMESTAMP": TokenType.TIMESTAMP,
             "UTC_DATE": TokenType.UTC_DATE,
             "UTC_TIME": TokenType.UTC_TIME,
@@ -133,8 +139,9 @@ class SingleStore(MySQL):
                 this=seq_get(args, 0),
                 format=MySQL.format_time(exp.Literal.string("%M")),
             ),
-            "WEEKDAY": lambda args: exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False)
-            % 7,
+            "WEEKDAY": lambda args: (
+                exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False) % 7
+            ),
             "UNIX_TIMESTAMP": exp.StrToUnix.from_arg_list,
             "FROM_UNIXTIME": build_formatted_time(exp.UnixToTime, "mysql"),
             "TIME_BUCKET": lambda args: exp.DateBin(
@@ -223,6 +230,7 @@ class SingleStore(MySQL):
 
         FUNCTION_PARSERS: t.Dict[str, t.Callable] = {
             **MySQL.Parser.FUNCTION_PARSERS,
+            "TRIM": lambda self: self._parse_trim_singlestore(),
             "JSON_AGG": lambda self: exp.JSONArrayAgg(
                 this=self._parse_term(),
                 order=self._parse_order(),
@@ -235,6 +243,66 @@ class SingleStore(MySQL):
             TokenType.UTC_TIME: exp.UtcTime,
             TokenType.UTC_TIMESTAMP: exp.UtcTimestamp,
         }
+
+        def _parse_trim_singlestore(self) -> exp.Trim:
+            """Custom TRIM parser for SingleStore that handles complex expressions"""
+            position = None
+            collation = None
+            expression = None
+
+            if self._match_texts(self.TRIM_TYPES):
+                position = self._prev.text.upper() if self._prev else None
+
+            # Use _parse_assignment instead of _parse_bitwise for better expression handling
+            this = self._parse_assignment()
+            if self._match_set((TokenType.FROM, TokenType.COMMA)):
+                prev_token = self._prev
+                invert_order = (
+                    prev_token and prev_token.token_type == TokenType.FROM
+                ) or self.TRIM_PATTERN_FIRST
+                # Use _parse_assignment for complex expressions like concatenations
+                expression = self._parse_assignment()
+
+                if invert_order:
+                    this, expression = expression, this
+
+            if self._match(TokenType.COLLATE):
+                collation = self._parse_assignment()
+
+            return self.expression(
+                exp.Trim,
+                this=this,
+                position=position,
+                expression=expression,
+                collation=collation,
+            )
+
+            def _parse_projections(self):
+                # Handle SingleStore WITH (hint) syntax before projections
+                hint_expressions = None
+                if self._match_pair(TokenType.WITH, TokenType.L_PAREN):
+                    # Parse the hint expressions inside WITH (...)
+                    hint_expressions = self._parse_csv(
+                        lambda: (
+                            self._parse_assignment() or self._parse_var(any_token=True)
+                        )
+                    )
+                    self._match_r_paren()
+                    # Store hint for later use
+                    self._singlestore_hints = hint_expressions
+
+                # Call parent to parse normal projections
+                return super()._parse_projections()
+
+            def _parse_hint(self):
+                # Check for SingleStore hints stored during projection parsing
+                if hasattr(self, "_singlestore_hints") and self._singlestore_hints:
+                    hint_exprs = self._singlestore_hints
+                    delattr(self, "_singlestore_hints")  # Clear after use
+                    return self.expression(exp.WithTableHint, expressions=hint_exprs)
+
+                # Fall back to parent implementation
+                return super()._parse_hint()
 
         CAST_COLUMN_OPERATORS = {TokenType.COLON_GT, TokenType.NCOLON_GT}
 
@@ -250,9 +318,9 @@ class SingleStore(MySQL):
                 this=this,
                 to=to,
             ),
-            TokenType.DCOLON: lambda self, this, path: build_json_extract_path(exp.JSONExtract)(
-                [this, exp.Literal.string(path.name)]
-            ),
+            TokenType.DCOLON: lambda self, this, path: build_json_extract_path(
+                exp.JSONExtract
+            )([this, exp.Literal.string(path.name)]),
             TokenType.DCOLONDOLLAR: lambda self, this, path: build_json_extract_path(
                 exp.JSONExtractScalar, json_type="STRING"
             )([this, exp.Literal.string(path.name)]),
@@ -280,8 +348,12 @@ class SingleStore(MySQL):
             "CREATE PIPELINE": _show_parser("CREATE PIPELINE", target=True),
             "CREATE PROJECTION": _show_parser("CREATE PROJECTION", target=True),
             "DATABASE STATUS": _show_parser("DATABASE STATUS"),
-            "DISTRIBUTED_PLANCACHE STATUS": _show_parser("DISTRIBUTED_PLANCACHE STATUS"),
-            "FULLTEXT SERVICE METRICS LOCAL": _show_parser("FULLTEXT SERVICE METRICS LOCAL"),
+            "DISTRIBUTED_PLANCACHE STATUS": _show_parser(
+                "DISTRIBUTED_PLANCACHE STATUS"
+            ),
+            "FULLTEXT SERVICE METRICS LOCAL": _show_parser(
+                "FULLTEXT SERVICE METRICS LOCAL"
+            ),
             "FULLTEXT SERVICE METRICS FOR NODE": _show_parser(
                 "FULLTEXT SERVICE METRICS FOR NODE", target=True
             ),
@@ -340,7 +412,9 @@ class SingleStore(MySQL):
             # Interpret the number as hex and convert it to the Unicode string
             return chr(int(m.group(1), 16))
 
-        UNICODE_SUBSTITUTE: t.Optional[t.Callable[[re.Match[str]], str]] = _unicode_substitute
+        UNICODE_SUBSTITUTE: t.Optional[t.Callable[[re.Match[str]], str]] = (
+            _unicode_substitute
+        )
 
         SUPPORTED_JSON_PATH_PARTS = {
             exp.JSONPathKey,
@@ -350,11 +424,17 @@ class SingleStore(MySQL):
 
         TRANSFORMS = {
             **MySQL.Generator.TRANSFORMS,
-            exp.TsOrDsToDate: lambda self, e: self.func("TO_DATE", e.this, self.format_time(e))
-            if e.args.get("format")
-            else self.func("DATE", e.this),
-            exp.StrToTime: lambda self, e: self.func("TO_TIMESTAMP", e.this, self.format_time(e)),
-            exp.ToChar: lambda self, e: self.func("TO_CHAR", e.this, self.format_time(e)),
+            exp.TsOrDsToDate: lambda self, e: (
+                self.func("TO_DATE", e.this, self.format_time(e))
+                if e.args.get("format")
+                else self.func("DATE", e.this)
+            ),
+            exp.StrToTime: lambda self, e: self.func(
+                "TO_TIMESTAMP", e.this, self.format_time(e)
+            ),
+            exp.ToChar: lambda self, e: self.func(
+                "TO_CHAR", e.this, self.format_time(e)
+            ),
             exp.StrToDate: lambda self, e: self.func(
                 "STR_TO_DATE",
                 e.this,
@@ -407,38 +487,54 @@ class SingleStore(MySQL):
                     ),
                 ),
             ),
-            exp.UnixToTimeStr: lambda self, e: f"FROM_UNIXTIME({self.sql(e, 'this')}) :> TEXT",
-            exp.DateBin: unsupported_args("unit", "zone")(
-                lambda self, e: self.func("TIME_BUCKET", e.this, e.expression, e.args.get("origin"))
+            exp.UnixToTimeStr: lambda self, e: (
+                f"FROM_UNIXTIME({self.sql(e, 'this')}) :> TEXT"
             ),
-            exp.TimeStrToDate: lambda self, e: self.sql(exp.cast(e.this, exp.DataType.Type.DATE)),
+            exp.DateBin: unsupported_args("unit", "zone")(
+                lambda self, e: self.func(
+                    "TIME_BUCKET", e.this, e.expression, e.args.get("origin")
+                )
+            ),
+            exp.TimeStrToDate: lambda self, e: self.sql(
+                exp.cast(e.this, exp.DataType.Type.DATE)
+            ),
             exp.FromTimeZone: lambda self, e: self.func(
                 "CONVERT_TZ", e.this, e.args.get("zone"), "'UTC'"
             ),
-            exp.DiToDate: lambda self,
-            e: f"STR_TO_DATE({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT})",
-            exp.DateToDi: lambda self,
-            e: f"(DATE_FORMAT({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT}) :> INT)",
-            exp.TsOrDiToDi: lambda self,
-            e: f"(DATE_FORMAT({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT}) :> INT)",
-            exp.Time: unsupported_args("zone")(lambda self, e: f"{self.sql(e, 'this')} :> TIME"),
+            exp.DiToDate: lambda self, e: (
+                f"STR_TO_DATE({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT})"
+            ),
+            exp.DateToDi: lambda self, e: (
+                f"(DATE_FORMAT({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT}) :> INT)"
+            ),
+            exp.TsOrDiToDi: lambda self, e: (
+                f"(DATE_FORMAT({self.sql(e, 'this')}, {SingleStore.DATEINT_FORMAT}) :> INT)"
+            ),
+            exp.Time: unsupported_args("zone")(
+                lambda self, e: f"{self.sql(e, 'this')} :> TIME"
+            ),
             exp.DatetimeAdd: _remove_ts_or_ds_to_date(date_add_sql("ADD")),
             exp.DatetimeTrunc: unsupported_args("zone")(timestamptrunc_sql()),
             exp.DatetimeSub: date_add_interval_sql("DATE", "SUB"),
             exp.DatetimeDiff: timestampdiff_sql,
             exp.DateTrunc: unsupported_args("zone")(timestamptrunc_sql()),
             exp.DateDiff: unsupported_args("zone")(
-                lambda self, e: timestampdiff_sql(self, e)
+                lambda self, e: (
+                    timestampdiff_sql(self, e)
+                    if e.unit is not None
+                    else self.func("DATEDIFF", e.this, e.expression)
+                )
+            ),
+            exp.TsOrDsDiff: lambda self, e: (
+                timestampdiff_sql(self, e)
                 if e.unit is not None
                 else self.func("DATEDIFF", e.this, e.expression)
             ),
-            exp.TsOrDsDiff: lambda self, e: timestampdiff_sql(self, e)
-            if e.unit is not None
-            else self.func("DATEDIFF", e.this, e.expression),
             exp.TimestampTrunc: unsupported_args("zone")(timestamptrunc_sql()),
             exp.CurrentDatetime: lambda self, e: self.sql(
                 cast_to_time6(
-                    exp.CurrentTimestamp(this=exp.Literal.number(6)), exp.DataType.Type.DATETIME
+                    exp.CurrentTimestamp(this=exp.Literal.number(6)),
+                    exp.DataType.Type.DATETIME,
                 )
             ),
             exp.JSONExtract: unsupported_args(
@@ -455,9 +551,15 @@ class SingleStore(MySQL):
             exp.JSONPathKey: json_path_key_only_name,
             exp.JSONPathSubscript: lambda self, e: self.json_path_part(e.this),
             exp.JSONPathRoot: lambda *_: "",
-            exp.JSONFormat: unsupported_args("options", "is_json")(rename_func("JSON_PRETTY")),
-            exp.JSONArrayAgg: unsupported_args("null_handling", "return_type", "strict")(
-                lambda self, e: self.func("JSON_AGG", e.this, suffix=f"{self.sql(e, 'order')})")
+            exp.JSONFormat: unsupported_args("options", "is_json")(
+                rename_func("JSON_PRETTY")
+            ),
+            exp.JSONArrayAgg: unsupported_args(
+                "null_handling", "return_type", "strict"
+            )(
+                lambda self, e: self.func(
+                    "JSON_AGG", e.this, suffix=f"{self.sql(e, 'order')})"
+                )
             ),
             exp.JSONArray: unsupported_args("null_handling", "return_type", "strict")(
                 rename_func("JSON_BUILD_ARRAY")
@@ -473,7 +575,9 @@ class SingleStore(MySQL):
             exp.JSONObject: unsupported_args(
                 "null_handling", "unique_keys", "return_type", "encoding"
             )(rename_func("JSON_BUILD_OBJECT")),
-            exp.DayOfWeekIso: lambda self, e: f"(({self.func('DAYOFWEEK', e.this)} % 7) + 1)",
+            exp.DayOfWeekIso: lambda self, e: (
+                f"(({self.func('DAYOFWEEK', e.this)} % 7) + 1)"
+            ),
             exp.DayOfMonth: rename_func("DAY"),
             exp.Hll: rename_func("APPROX_COUNT_DISTINCT"),
             exp.ApproxDistinct: rename_func("APPROX_COUNT_DISTINCT"),
@@ -492,16 +596,23 @@ class SingleStore(MySQL):
             exp.VariancePop: rename_func("VAR_POP"),
             exp.Xor: bool_xor_sql,
             exp.Cbrt: lambda self, e: self.sql(
-                exp.Pow(this=e.this, expression=exp.Literal.number(1) / exp.Literal.number(3))
+                exp.Pow(
+                    this=e.this,
+                    expression=exp.Literal.number(1) / exp.Literal.number(3),
+                )
             ),
             exp.RegexpLike: lambda self, e: self.binary(e, "RLIKE"),
             exp.Repeat: lambda self, e: self.func(
                 "LPAD",
                 exp.Literal.string(""),
-                exp.Mul(this=self.func("LENGTH", e.this), expression=e.args.get("times")),
+                exp.Mul(
+                    this=self.func("LENGTH", e.this), expression=e.args.get("times")
+                ),
                 e.this,
             ),
-            exp.IsAscii: lambda self, e: f"({self.sql(e, 'this')} RLIKE '^[\x00-\x7f]*$')",
+            exp.IsAscii: lambda self, e: (
+                f"({self.sql(e, 'this')} RLIKE '^[\x00-\x7f]*$')"
+            ),
             exp.MD5Digest: lambda self, e: self.func("UNHEX", self.func("MD5", e.this)),
             exp.Contains: rename_func("INSTR"),
             exp.RegexpExtractAll: unsupported_args("position", "occurrence", "group")(
@@ -523,7 +634,9 @@ class SingleStore(MySQL):
                 )
             ),
             exp.StartsWith: lambda self, e: self.func(
-                "REGEXP_INSTR", e.this, self.func("CONCAT", exp.Literal.string("^"), e.expression)
+                "REGEXP_INSTR",
+                e.this,
+                self.func("CONCAT", exp.Literal.string("^"), e.expression),
             ),
             exp.FromBase: lambda self, e: self.func(
                 "CONV", e.this, e.expression, exp.Literal.number(10)
@@ -537,9 +650,13 @@ class SingleStore(MySQL):
             ),
             exp.Stuff: lambda self, e: self.func(
                 "CONCAT",
-                self.func("SUBSTRING", e.this, exp.Literal.number(1), e.args.get("start") - 1),
+                self.func(
+                    "SUBSTRING", e.this, exp.Literal.number(1), e.args.get("start") - 1
+                ),
                 e.expression,
-                self.func("SUBSTRING", e.this, e.args.get("start") + e.args.get("length")),
+                self.func(
+                    "SUBSTRING", e.this, e.args.get("start") + e.args.get("length")
+                ),
             ),
             exp.National: lambda self, e: self.national_sql(e, prefix=""),
             exp.Reduce: unsupported_args("finish")(
@@ -820,7 +937,6 @@ class SingleStore(MySQL):
             "commit",
             "committed",
             "_commit_log_tail",
-            "committed",
             "compact",
             "compile",
             "compressed",
@@ -1260,7 +1376,6 @@ class SingleStore(MySQL):
             "monthname",
             "months_between",
             "move",
-            "mpl",
             "names",
             "named",
             "namespace",
@@ -1279,7 +1394,6 @@ class SingleStore(MySQL):
             "now",
             "nowait",
             "no_write_to_binlog",
-            "no_query_rewrite",
             "norely",
             "nth_value",
             "ntile",
@@ -1334,7 +1448,6 @@ class SingleStore(MySQL):
             "passing",
             "password",
             "password_lock_time",
-            "parser",
             "pause",
             "_pause_replay",
             "percent_rank",
@@ -1719,14 +1832,62 @@ class SingleStore(MySQL):
             "zone",
         }
 
+        def set_operation(self, expression: exp.SetOperation) -> str:
+            # Override the default set_operation to use MINUS instead of EXCEPT for SingleStore
+            if isinstance(expression, exp.Except):
+                op_type = type(expression)
+                op_name = "MINUS"  # Use MINUS instead of EXCEPT for SingleStore
+
+                distinct = expression.args.get("distinct")
+                if (
+                    distinct is False
+                    and op_type in (exp.Except, exp.Intersect)
+                    and not self.EXCEPT_INTERSECT_SUPPORT_ALL_CLAUSE
+                ):
+                    self.unsupported(f"{op_name} ALL is not supported")
+
+                default_distinct = self.dialect.SET_OP_DISTINCT_BY_DEFAULT[op_type]
+
+                if distinct is None:
+                    distinct = default_distinct
+                    if distinct is None:
+                        self.unsupported(
+                            f"{op_name} requires DISTINCT or ALL to be specified"
+                        )
+
+                if distinct is default_distinct:
+                    distinct_or_all = ""
+                else:
+                    distinct_or_all = " DISTINCT" if distinct else " ALL"
+
+                side_kind = " ".join(filter(None, [expression.side, expression.kind]))
+                side_kind = f"{side_kind} " if side_kind else ""
+
+                by_name = " BY NAME" if expression.args.get("by_name") else ""
+                on = self.expressions(expression, key="on", flat=True)
+                on = f" ON ({on})" if on else ""
+
+                return f"{side_kind}{op_name}{distinct_or_all}{by_name}{on}"
+            else:
+                # For all other set operations, use the default behavior
+                return super().set_operation(expression)
+
         def jsonextractscalar_sql(self, expression: exp.JSONExtractScalar) -> str:
             json_type = expression.args.get("json_type")
-            func_name = "JSON_EXTRACT_JSON" if json_type is None else f"JSON_EXTRACT_{json_type}"
+            func_name = (
+                "JSON_EXTRACT_JSON"
+                if json_type is None
+                else f"JSON_EXTRACT_{json_type}"
+            )
             return json_extract_segments(func_name)(self, expression)
 
         def jsonbextractscalar_sql(self, expression: exp.JSONBExtractScalar) -> str:
             json_type = expression.args.get("json_type")
-            func_name = "BSON_EXTRACT_BSON" if json_type is None else f"BSON_EXTRACT_{json_type}"
+            func_name = (
+                "BSON_EXTRACT_BSON"
+                if json_type is None
+                else f"BSON_EXTRACT_{json_type}"
+            )
             return json_extract_segments(func_name)(self, expression)
 
         def jsonextractarray_sql(self, expression: exp.JSONExtractArray) -> str:
@@ -1756,7 +1917,9 @@ class SingleStore(MySQL):
 
             if json_type:
                 return self.func(
-                    f"JSON_ARRAY_CONTAINS_{json_type}", expression.expression, expression.this
+                    f"JSON_ARRAY_CONTAINS_{json_type}",
+                    expression.expression,
+                    expression.this,
                 )
 
             return self.func(
@@ -1767,12 +1930,17 @@ class SingleStore(MySQL):
 
         @unsupported_args("kind", "values")
         def datatype_sql(self, expression: exp.DataType) -> str:
-            if expression.args.get("nested") and not expression.is_type(exp.DataType.Type.STRUCT):
+            if expression.args.get("nested") and not expression.is_type(
+                exp.DataType.Type.STRUCT
+            ):
                 self.unsupported(
                     f"Argument 'nested' is not supported for representation of '{expression.this.value}' in SingleStore"
                 )
 
-            if expression.is_type(exp.DataType.Type.VARBINARY) and not expression.expressions:
+            if (
+                expression.is_type(exp.DataType.Type.VARBINARY)
+                and not expression.expressions
+            ):
                 # `VARBINARY` must always have a size - if it doesn't, we always generate `BLOB`
                 return "BLOB"
             if expression.is_type(
@@ -1817,7 +1985,9 @@ class SingleStore(MySQL):
             if timezone:
                 if isinstance(timezone, exp.Literal) and timezone.name.lower() == "utc":
                     return self.func("UTC_DATE")
-                self.unsupported("CurrentDate with timezone is not supported in SingleStore")
+                self.unsupported(
+                    "CurrentDate with timezone is not supported in SingleStore"
+                )
 
             return self.func("CURRENT_DATE")
 
@@ -1828,7 +1998,9 @@ class SingleStore(MySQL):
                     return self.func("UTC_TIME")
                 if isinstance(arg, exp.Literal) and arg.is_number:
                     return self.func("CURRENT_TIME", arg)
-                self.unsupported("CurrentTime with timezone is not supported in SingleStore")
+                self.unsupported(
+                    "CurrentTime with timezone is not supported in SingleStore"
+                )
 
             return self.func("CURRENT_TIME")
 
@@ -1839,7 +2011,9 @@ class SingleStore(MySQL):
                     return self.func("UTC_TIMESTAMP")
                 if isinstance(arg, exp.Literal) and arg.is_number:
                     return self.func("CURRENT_TIMESTAMP", arg)
-                self.unsupported("CurrentTimestamp with timezone is not supported in SingleStore")
+                self.unsupported(
+                    "CurrentTimestamp with timezone is not supported in SingleStore"
+                )
 
             return self.func("CURRENT_TIMESTAMP")
 
@@ -1861,7 +2035,9 @@ class SingleStore(MySQL):
             self.unsupported("STANDARD_HASH function is not supported in SingleStore")
             return self.func("SHA", expression.this)
 
-        @unsupported_args("is_database", "exists", "cluster", "identity", "option", "partition")
+        @unsupported_args(
+            "is_database", "exists", "cluster", "identity", "option", "partition"
+        )
         def truncatetable_sql(self, expression: exp.TruncateTable) -> str:
             statements = []
             for expression in expression.expressions:
@@ -1883,7 +2059,9 @@ class SingleStore(MySQL):
             collate = f" COLLATE {collate}" if collate else ""
             return f"{alter}{collate}"
 
-        def computedcolumnconstraint_sql(self, expression: exp.ComputedColumnConstraint) -> str:
+        def computedcolumnconstraint_sql(
+            self, expression: exp.ComputedColumnConstraint
+        ) -> str:
             this = self.sql(expression, "this")
             not_null = " NOT NULL" if expression.args.get("not_null") else ""
             type = self.sql(expression, "data_type") or "AUTO"
