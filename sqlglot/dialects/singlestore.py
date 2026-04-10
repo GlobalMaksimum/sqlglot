@@ -3,6 +3,7 @@ import typing as t
 
 from sqlglot import TokenType, exp
 from sqlglot.dialects.dialect import (
+    NormalizationStrategy,
     bool_xor_sql,
     build_formatted_time,
     build_json_extract_path,
