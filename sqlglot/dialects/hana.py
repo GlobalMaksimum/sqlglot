@@ -1,4 +1,4 @@
-from sqlglot import exp
+from sqlglot import exp, generator
 from sqlglot.dialects.dialect import Dialect
 from sqlglot.tokens import Tokenizer, TokenType
 
@@ -11,8 +11,8 @@ class HANA(Dialect):
             "ALPHANUM": TokenType.VARBINARY,
         }
 
-    class Generator(Dialect.Generator):
+    class Generator(generator.Generator):
         TRANSFORMS = {
-            **Dialect.Generator.TRANSFORMS,
+            **generator.Generator.TRANSFORMS,
             # Add HANA-specific transformations here
         }
