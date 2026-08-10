@@ -91,6 +91,12 @@ BIGINT;
 LAST_VALUE(tbl.bigint_col) OVER (ORDER BY tbl.bigint_col);
 BIGINT;
 
+FIRST_VALUE(tbl.bigint_col) OVER (ORDER BY tbl.bigint_col);
+BIGINT;
+
+FIRST_VALUE(tbl.str_col) OVER (ORDER BY tbl.str_col);
+TEXT;
+
 TO_BASE32(tbl.bytes_col);
 VARCHAR;
 
@@ -199,6 +205,30 @@ STRING;
 SUBSTRING(tbl.bin_col, 0, 0);
 BINARY;
 
+# dialect: hive, spark2, spark, databricks
+FIRST(tbl.str_col);
+TEXT;
+
+# dialect: hive, spark2, spark, databricks
+FIRST(tbl.bigint_col);
+BIGINT;
+
+# dialect: hive, spark2, spark, databricks
+LAST(tbl.str_col);
+TEXT;
+
+# dialect: hive, spark2, spark, databricks
+LAST(tbl.bigint_col);
+BIGINT;
+
+# dialect: spark2, spark, databricks
+REGEXP_EXTRACT(tbl.str_col, pattern, 0);
+STRING;
+
+# dialect: spark2, spark, databricks
+REGEXP_EXTRACT(tbl.bin_col, pattern, 0);
+STRING;
+
 # dialect: spark2, spark, databricks
 CONCAT(tbl.bin_col, tbl.bin_col);
 BINARY;
@@ -226,6 +256,26 @@ UNKNOWN;
 # dialect: spark2, spark, databricks
 CONCAT(unknown, unknown);
 UNKNOWN;
+
+# dialect: spark2, spark, databricks
+CONCAT('x', tbl.date_col);
+STRING;
+
+# dialect: spark2, spark, databricks
+CONCAT(tbl.date_col, tbl.date_col);
+STRING;
+
+# dialect: spark2, spark, databricks
+CONCAT('x', tbl.bin_col);
+STRING;
+
+# dialect: spark2, spark, databricks
+CONCAT(tbl.date_col, tbl.int_col);
+STRING;
+
+# dialect: spark2, spark, databricks
+LPAD('x', 10, tbl.date_col);
+STRING;
 
 # dialect: spark2, spark, databricks
 LPAD(tbl.bin_col, 1, tbl.bin_col);
@@ -374,6 +424,22 @@ BINARY;
 # dialect: spark, databricks
 LOCALTIMESTAMP();
 TIMESTAMPNTZ;
+
+# dialect: spark, databricks
+DATE_ADD(tbl.date_col, 1);
+DATE;
+
+# dialect: spark, databricks
+DATE_ADD(tbl.timestamp_col, 1);
+DATE;
+
+# dialect: spark, databricks
+DATE_ADD(MONTH, 1, tbl.date_col);
+TIMESTAMP;
+
+# dialect: spark, databricks
+DATE_ADD(MONTH, 1, tbl.timestamp_col);
+TIMESTAMP;
 
 # dialect: hive, spark2, spark, databricks
 ENCODE(tbl.str_col, tbl.str_col);
@@ -878,6 +944,37 @@ ARRAY<INT>;
 # dialect: hive, spark2, spark, databricks
 ARRAY_EXCEPT(tbl.array_col, tbl.array_col);
 ARRAY<STRING>;
+
+# dialect: hive, spark2, spark, databricks
+MINUTE('2024-01-01 12:30:00');
+INT;
+
+# dialect: hive, spark, databricks
+TYPEOF(tbl.int_col);
+VARCHAR;
+
+# dialect: hive, spark, databricks
+TYPEOF(tbl.double_col);
+VARCHAR;
+
+# dialect: hive, spark, databricks
+TYPEOF(tbl.str_col);
+VARCHAR;
+
+TYPEOF(foo);
+VARCHAR;
+
+# dialect: spark2, spark, databricks
+tbl.int_col DIV tbl.int_col;
+BIGINT;
+
+# dialect: spark2, spark, databricks
+tbl.double_col DIV tbl.double_col;
+BIGINT; 
+
+# dialect: hive
+tbl.bigint DIV tbl.bigint;
+BIGINT; 
 
 --------------------------------------
 -- BigQuery
@@ -2364,6 +2461,74 @@ DATE_ADD(DATETIME '2008-12-25 15:30:00', INTERVAL 30 MINUTE);
 DATETIME;
 
 # dialect: bigquery
+DATE_ADD('2008-12-25', INTERVAL 5 DAY);
+DATE;
+
+# dialect: bigquery
+DATE_TRUNC('2008-12-25', MONTH);
+DATE;
+
+# dialect: bigquery
+DATETIME_TRUNC('2008-12-25', DAY);
+DATETIME;
+
+# dialect: bigquery
+DATETIME_TRUNC('2008-12-25 15:30:00', DAY);
+DATETIME;
+
+# dialect: bigquery
+TIMESTAMP_TRUNC('2008-12-25 15:30:00', DAY);
+TIMESTAMP;
+
+# dialect: bigquery
+TIMESTAMP_TRUNC('2008-12-25', DAY);
+TIMESTAMP;
+
+# dialect: bigquery
+DATE_SUB('2008-12-25', INTERVAL 1 MONTH);
+DATE;
+
+# dialect: bigquery
+DATE_SUB(DATE '2008-12-25', INTERVAL 1 MONTH);
+DATE;
+
+# dialect: bigquery
+DATE_SUB(DATETIME '2008-12-25 15:30:00', INTERVAL 1 DAY);
+DATETIME;
+
+# dialect: bigquery
+DATE_SUB(TIMESTAMP '2008-12-25 15:30:00', INTERVAL 1 HOUR);
+TIMESTAMP;
+
+# dialect: bigquery
+DATETIME_ADD('2008-12-25 15:30:00', INTERVAL 1 DAY);
+DATETIME;
+
+# dialect: bigquery
+DATETIME_SUB('2008-12-25 15:30:00', INTERVAL 1 DAY);
+DATETIME;
+
+# dialect: bigquery
+TIMESTAMP_ADD('2008-12-25 15:30:00', INTERVAL 1 HOUR);
+TIMESTAMP;
+
+# dialect: bigquery
+TIMESTAMP_SUB('2008-12-25 15:30:00', INTERVAL 1 HOUR);
+TIMESTAMP;
+
+# dialect: bigquery
+TIME_ADD('08:50:48', INTERVAL 1 HOUR);
+TIME;
+
+# dialect: bigquery
+TIME_SUB('08:50:48', INTERVAL 1 HOUR);
+TIME;
+
+# dialect: bigquery
+TIME_TRUNC('08:50:48', HOUR);
+TIME;
+
+# dialect: bigquery
 UNIX_DATE(tbl.date_col);
 BIGINT;
 
@@ -2374,6 +2539,10 @@ BIGINT;
 # dialect: snowflake
 ABS(tbl.bigint_col);
 BIGINT;
+
+# dialect: snowflake
+REGEXP_SUBSTR(tbl.str_col, pattern, 1);
+VARCHAR;
 
 # dialect: snowflake
 ABS(tbl.double_col);
@@ -5288,6 +5457,14 @@ PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY tbl.bigint_col) OVER (PARTITION BY 
 BIGINT;
 
 # dialect: snowflake
+ARRAY_AGG(tbl.int_col) WITHIN GROUP (ORDER BY tbl.int_col);
+ARRAY;
+
+# dialect: snowflake
+ARRAY_AGG(tbl.int_col) WITHIN GROUP (ORDER BY tbl.int_col) OVER (PARTITION BY tbl.text_col);
+ARRAY;
+
+# dialect: snowflake
 PARSE_IP('192.168.1.1', 'INET');
 OBJECT;
 
@@ -5843,6 +6020,10 @@ FLOAT;
 DEGREES(tbl.bigint_col);
 BIGINT;
 
+# dialect: tsql 
+CURRENT_TIMESTAMP;
+DATETIME;
+
 --------------------------------------
 -- MySQL
 --------------------------------------
@@ -5994,6 +6175,10 @@ VARCHAR;
 # dialect: mysql
 CURRENT_TIMESTAMP();
 DATETIME;
+
+# dialect: mysql
+REPLACE(tbl.str_col, tbl.str_col, tbl.str_col);
+VARCHAR;
 
 --------------------------------------
 -- DuckDB
@@ -6251,6 +6436,14 @@ HUGEINT;
 DATE_DIFF('year', tbl.timestamp_col, tbl.timestamp_col);
 BIGINT;
 
+# dialect: duckdb
+EXTRACT('hour' FROM tbl.timestamp_col);
+BIGINT;
+
+# dialect: duckdb
+EXTRACT('month' FROM tbl.timestamp_col);
+BIGINT;
+
 --------------------------------------
 -- Presto / Trino
 --------------------------------------
@@ -6294,3 +6487,189 @@ BIGINT;
 # dialect: presto, trino
 WIDTH_BUCKET(tbl.double_col, tbl.array_col);
 BIGINT;
+
+# dialect: trino
+ARRAY_FIRST(ARRAY['a', 'b'], x -> x = 'b');
+VARCHAR;
+
+--------------------------------------
+-- Clickhouse
+--------------------------------------
+
+# dialect: clickhouse
+MD5(tbl.str_col);
+FIXEDSTRING(16);
+--------------------------------------
+-- IGNORE NULLS / RESPECT NULLS
+--------------------------------------
+
+# dialect: spark, databricks, snowflake, bigquery, trino, redshift
+FIRST_VALUE(tbl.str_col) IGNORE NULLS;
+TEXT;
+
+# dialect: spark, databricks, snowflake, bigquery, trino, redshift
+LAST_VALUE(tbl.str_col) RESPECT NULLS;
+TEXT;
+
+--------------------------------------
+-- Ranking window functions
+--------------------------------------
+
+RANK() OVER (ORDER BY 1);
+BIGINT;
+
+DENSE_RANK() OVER (ORDER BY 1);
+BIGINT;
+
+ROW_NUMBER() OVER (ORDER BY 1);
+BIGINT;
+
+NTILE(4) OVER (ORDER BY 1);
+BIGINT;
+
+PERCENT_RANK() OVER (ORDER BY 1);
+DOUBLE;
+
+CUME_DIST() OVER (ORDER BY 1);
+DOUBLE;
+
+# dialect: hive, spark2, spark, databricks, snowflake
+RANK() OVER (ORDER BY 1);
+INT;
+
+# dialect: hive, spark2, spark, databricks, snowflake
+DENSE_RANK() OVER (ORDER BY 1);
+INT;
+
+# dialect: hive, spark2, spark, databricks, snowflake
+ROW_NUMBER() OVER (ORDER BY 1);
+INT;
+
+# dialect: hive, spark2, spark, databricks, snowflake
+NTILE(4) OVER (ORDER BY 1);
+INT;
+
+# dialect: postgres
+NTILE(4) OVER (ORDER BY 1);
+INT;
+
+# dialect: redshift
+RANK() OVER (ORDER BY 1);
+INT;
+
+# dialect: redshift
+DENSE_RANK() OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: redshift
+ROW_NUMBER() OVER (ORDER BY 1);
+BIGINT;
+
+# dialect: redshift
+NTILE(4) OVER (ORDER BY 1);
+BIGINT;
+
+--------------------------------------
+-- Offset window functions
+--------------------------------------
+
+LAG(tbl.bigint_col) OVER (ORDER BY tbl.int_col);
+BIGINT;
+
+LAG(tbl.bigint_col, 1, tbl.double_col) OVER (ORDER BY tbl.int_col);
+DOUBLE;
+
+LAG(tbl.double_col, 1, tbl.bigint_col) OVER (ORDER BY tbl.int_col);
+DOUBLE;
+
+LEAD(tbl.bigint_col) OVER (ORDER BY tbl.int_col);
+BIGINT;
+
+LEAD(tbl.bigint_col, 1, tbl.double_col) OVER (ORDER BY tbl.int_col);
+DOUBLE;
+
+LEAD(tbl.double_col, 1, tbl.bigint_col) OVER (ORDER BY tbl.int_col);
+DOUBLE;
+
+NTH_VALUE(tbl.str_col, 2) OVER (ORDER BY tbl.int_col);
+TEXT;
+
+--------------------------------------
+-- Aggregate functions
+--------------------------------------
+
+COVAR_POP(tbl.double_col, tbl.double_col);
+DOUBLE;
+
+COVAR_POP(tbl.int_col, tbl.int_col);
+DOUBLE;
+
+COVAR_SAMP(tbl.double_col, tbl.double_col);
+DOUBLE;
+
+COVAR_SAMP(tbl.int_col, tbl.int_col);
+DOUBLE;
+
+--------------------------------------
+-- Ordered-set aggregate functions
+--------------------------------------
+
+PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tbl.double_col);
+DOUBLE;
+
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.double_col);
+DOUBLE;
+
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.int_col);
+INT;
+
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.bigint_col);
+BIGINT;
+
+# dialect: hive, spark2, spark, databricks
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.int_col);
+DOUBLE;
+
+# dialect: hive, spark2, spark, databricks
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.bigint_col);
+DOUBLE;
+
+# dialect: hive, spark2, spark, databricks
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.double_col);
+DOUBLE;
+
+# dialect: hive, spark2, spark, databricks
+PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tbl.int_col);
+DOUBLE;
+
+# dialect: spark2, spark, databricks
+ABS(tbl.int_col);
+INT;
+
+# dialect: spark2, spark, databricks
+ABS(tbl.bigint_col);
+BIGINT;
+
+# dialect: spark2, spark, databricks
+ABS(tbl.double_col);
+DOUBLE;
+
+# dialect: spark2, spark, databricks
+ABS(tbl.float_col);
+FLOAT;
+
+# dialect: duckdb
+QUANTILE_DISC(tbl.int_col, 0.5);
+INT;
+
+# dialect: duckdb
+PERCENTILE_DISC(tbl.int_col, 0.5);
+INT;
+
+# dialect: duckdb
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.int_col);
+INT;
+
+# dialect: duckdb
+PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY tbl.double_col);
+DOUBLE;

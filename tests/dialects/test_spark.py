@@ -271,9 +271,32 @@ TBLPROPERTIES (
         )
 
     def test_spark(self):
+        # COLLATE on CHAR/VARCHAR should be preserved when the type is rewritten to STRING
+        self.validate_identity(
+            "SELECT CAST('a' AS CHAR(10) COLLATE UTF8_BINARY)",
+            "SELECT CAST('a' AS STRING COLLATE UTF8_BINARY)",
+        )
+        self.validate_identity(
+            "SELECT CAST('a' AS VARCHAR(10) COLLATE UTF8_BINARY)",
+            "SELECT CAST('a' AS STRING COLLATE UTF8_BINARY)",
+        )
+        self.validate_all(
+            "SELECT CAST('a' AS STRING COLLATE foo)",
+            read={"postgres": "SELECT CAST('a' AS VARCHAR COLLATE foo)"},
+        )
+
         self.assertEqual(
             parse_one("REFRESH TABLE t", read="spark").assert_is(exp.Refresh).sql(dialect="spark"),
             "REFRESH TABLE t",
+        )
+
+        self.validate_all(
+            "CONCAT_WS(' ', NULL, 'Smith')",
+            write={
+                "duckdb": "CONCAT_WS(' ', NULL, 'Smith')",
+                "spark": "CONCAT_WS(' ', NULL, 'Smith')",
+                "hive": "CONCAT_WS(' ', NULL, 'Smith')",
+            },
         )
 
         # Spark TRUNC is date-only, should parse to DateTrunc (not numeric Trunc)
@@ -689,19 +712,19 @@ TBLPROPERTIES (
             },
         )
         self.validate_all(
-            "SELECT piv.Q1 FROM (SELECT * FROM produce PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2'))) AS piv",
+            "SELECT piv.Q1 FROM (SELECT * FROM produce PIVOT(SUM(sales) FOR quarter IN ('Q1' AS `'Q1'`, 'Q2' AS `'Q2'`))) AS piv",
             read={
                 "snowflake": "SELECT piv.Q1 FROM produce PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2')) piv",
             },
         )
         self.validate_all(
-            "SELECT piv.Q1 FROM (SELECT * FROM (SELECT * FROM produce) PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2'))) AS piv",
+            "SELECT piv.Q1 FROM (SELECT * FROM (SELECT * FROM produce) PIVOT(SUM(sales) FOR quarter IN ('Q1' AS `'Q1'`, 'Q2' AS `'Q2'`))) AS piv",
             read={
                 "snowflake": "SELECT piv.Q1 FROM (SELECT * FROM produce) PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2')) piv",
             },
         )
         self.validate_all(
-            "SELECT * FROM produce PIVOT(SUM(produce.sales) FOR quarter IN ('Q1', 'Q2'))",
+            "SELECT * FROM produce PIVOT(SUM(produce.sales) FOR quarter IN ('Q1' AS `'Q1'`, 'Q2' AS `'Q2'`))",
             read={
                 "snowflake": "SELECT * FROM produce PIVOT (SUM(produce.sales) FOR produce.quarter IN ('Q1', 'Q2'))",
             },
@@ -786,7 +809,6 @@ TBLPROPERTIES (
             "AGGREGATE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)",
             write={
                 "trino": "REDUCE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)",
-                "duckdb": "REDUCE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)",
                 "hive": "REDUCE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)",
                 "presto": "REDUCE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)",
                 "spark": "AGGREGATE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)",
@@ -867,7 +889,7 @@ TBLPROPERTIES (
             "SELECT LEFT(x, 2), RIGHT(x, 2)",
             write={
                 "duckdb": "SELECT LEFT(x, 2), RIGHT(x, 2)",
-                "presto": "SELECT SUBSTRING(x, 1, 2), SUBSTRING(x, LENGTH(x) - (2 - 1))",
+                "presto": "SELECT SUBSTR(x, 1, 2), SUBSTR(x, LENGTH(x) - (2 - 1))",
                 "hive": "SELECT SUBSTRING(x, 1, 2), SUBSTRING(x, LENGTH(x) - (2 - 1))",
                 "spark": "SELECT LEFT(x, 2), RIGHT(x, 2)",
             },
@@ -1045,6 +1067,26 @@ TBLPROPERTIES (
             },
             write={
                 "databricks": "SELECT * FROM foo TIMESTAMP AS OF '2020-01-01 00:00:00' AS bar",
+            },
+        )
+
+        self.validate_all(
+            "WITH RECURSIVE t(n) AS (SELECT * FROM VALUES (1) AS _values) SELECT n FROM t",
+            read={
+                "spark": "WITH RECURSIVE t(n) AS (SELECT * FROM VALUES (1) AS _values) SELECT n FROM t",
+                "databricks": "WITH RECURSIVE t(n) AS (SELECT * FROM VALUES (1) AS _values) SELECT n FROM t",
+            },
+            write={
+                "databricks": "WITH RECURSIVE t(n) AS (SELECT * FROM VALUES (1) AS _values) SELECT n FROM t",
+            },
+        )
+
+    def test_named_struct(self):
+        self.validate_all(
+            "SELECT named_struct('a', 1, 'b', 'x')",
+            write={
+                "spark": "SELECT STRUCT(1 AS a, 'x' AS b)",
+                "databricks": "SELECT STRUCT(1 AS a, 'x' AS b)",
             },
         )
 
@@ -1319,3 +1361,70 @@ TBLPROPERTIES (
         self.validate_identity("DECLARE VARIABLE myvar INT DEFAULT 5", "DECLARE myvar INT = 5")
         self.validate_identity("DECLARE x, y, z INT DEFAULT 1", "DECLARE x, y, z INT = 1")
         self.validate_identity("DECLARE x INT = 5")
+        self.validate_identity("DECLARE five = 5")
+        self.validate_identity("DECLARE OR REPLACE five = 55")
+        self.validate_identity("DECLARE VARIABLE size DEFAULT 6", "DECLARE size = 6")
+        self.validate_identity("DECLARE some_var STRING")
+
+    def test_set_variable(self):
+        self.validate_all(
+            "SET VAR v = 5",
+            write={
+                "spark": "SET VARIABLE v = 5",
+                "databricks": "SET VARIABLE v = 5",
+            },
+        )
+        self.validate_all(
+            "SET VARIABLE v = 5",
+            write={
+                "spark": "SET VARIABLE v = 5",
+                "databricks": "SET VARIABLE v = 5",
+            },
+        )
+
+        self.validate_all(
+            "SET VARIABLE v = (SELECT MAX(c1) FROM VALUES (1), (2) AS T(c1))",
+            write={
+                "spark": "SET VARIABLE v = (SELECT MAX(c1) FROM VALUES (1), (2) AS T(c1))",
+                "databricks": "SET VARIABLE v = (SELECT MAX(c1) FROM VALUES (1), (2) AS T(c1))",
+            },
+        )
+
+        self.validate_all(
+            "SET VARIABLE v = DEFAULT",
+            write={
+                "spark": "SET VARIABLE v = DEFAULT",
+                "databricks": "SET VARIABLE v = DEFAULT",
+            },
+        )
+
+        self.validate_all(
+            "SET VARIABLE v1 = 1, v2 = '2'",
+            write={
+                "spark": "SET VARIABLE v1 = 1, v2 = '2'",
+                "databricks": "SET VARIABLE v1 = 1, v2 = '2'",
+            },
+        )
+
+        self.validate_all(
+            "SET VARIABLE (v1, v2) = (SELECT 1, 2)",
+            write={
+                "spark": "SET VARIABLE (v1, v2) = (SELECT 1, 2)",
+                "databricks": "SET VARIABLE (v1, v2) = (SELECT 1, 2)",
+            },
+        )
+
+    def test_try_divide(self):
+        self.validate_all(
+            "SELECT TRY_DIVIDE(a, b)",
+            read={
+                "spark": "SELECT TRY_DIVIDE(a, b)",
+                "databricks": "SELECT TRY_DIVIDE(a, b)",
+            },
+            write={
+                "spark": "SELECT TRY_DIVIDE(a, b)",
+                "databricks": "SELECT TRY_DIVIDE(a, b)",
+                "snowflake": "SELECT IFF(b <> 0, a / b, NULL)",
+                "duckdb": "SELECT CASE WHEN b <> 0 THEN a / b ELSE NULL END",
+            },
+        )

@@ -1,17 +1,26 @@
 [project]
 name = "sqlglotc"
-dynamic = ["version"]
+dynamic = ["version", "dependencies"]
 description = "mypyc-compiled extensions for sqlglot"
 authors = [{ name = "Toby Mao", email = "toby.mao@gmail.com" }]
 license = "MIT"
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
+
+[project.optional-dependencies]
+dev = ["setuptools >= 61.0", "setuptools_scm", "sqlglot-mypy >= 2.1.0.post3"]
 
 [project.urls]
 Homepage = "https://sqlglot.com/"
 Repository = "https://github.com/tobymao/sqlglot"
 
 [build-system]
-requires = ["setuptools >= 61.0", "setuptools_scm", "mypy>=1.0", "types-python-dateutil"]
+requires = [
+    "setuptools >= 61.0",
+    "setuptools_scm",
+    "sqlglot-mypy >= 2.1.0.post3",
+    "types-python-dateutil",
+    "sqlglot",
+]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -22,10 +31,6 @@ root = ".."
 fallback_version = "0.0.0"
 local_scheme = "no-local-version"
 
-[tool.mypy]
-# Allow mypyc to resolve sqlglot.* from the repo root (../sqlglot/) or sdist root (./sqlglot/).
-mypy_path = [".", ".."]
-
 [[tool.mypy.overrides]]
-module = "sqlglot._version"
+module = ["sqlglot._version", "sqlglotc"]
 ignore_missing_imports = true

@@ -409,6 +409,9 @@ SELECT -(x.a > x.b) FROM x;
 SELECT (-((x.a) IS NULL)) FROM x;
 SELECT -(x.a IS NULL) FROM x;
 
+SELECT * FROM A WHERE a - (b < c) < 0 AND a + (b > c) >= 0;
+SELECT * FROM A WHERE a + (b > c) >= 0 AND a - (b < c) < 0;
+
 
 --------------------------------------
 -- Literals
@@ -884,6 +887,36 @@ CAST(CAST(CAST(1 AS INT) AS BOOLEAN) AS INT) = 1;
 x > CAST('2023-01-01' AS DATE) AND x < CAST('2023-01-01' AS DATETIME);
 FALSE;
 
+CAST(x AS INT) < 0 AND CAST(x AS INT) >= -500;
+CAST(x AS INT) < 0 AND CAST(x AS INT) >= -500;
+
+CAST(x AS INT) < -1 AND CAST(x AS INT) >= -500;
+CAST(x AS INT) < -1 AND CAST(x AS INT) >= -500;
+
+CAST(x AS INT) < -500 AND CAST(x AS INT) >= -1;
+FALSE;
+
+0 > CAST(x AS INT) AND -500 <= CAST(x AS INT);
+CAST(x AS INT) < 0 AND CAST(x AS INT) >= -500;
+
+-1 > CAST(x AS INT) AND -500 <= CAST(x AS INT);
+CAST(x AS INT) < -1 AND CAST(x AS INT) >= -500;
+
+-500 > CAST(x AS INT) AND -1 <= CAST(x AS INT);
+FALSE;
+
+CAST(x AS INT) < 1000 AND CAST(x AS INT) >= - -500;
+CAST(x AS INT) < 1000 AND CAST(x AS INT) >= 500;
+
+CAST(x AS INT) < 0 AND CAST(x AS INT) >= - - -500;
+CAST(x AS INT) < 0 AND CAST(x AS INT) >= -500;
+
+1000 > CAST(x AS INT) AND - -500 <= CAST(x AS INT);
+CAST(x AS INT) < 1000 AND CAST(x AS INT) >= 500;
+
+0 > CAST(x AS INT) AND - - -500 <= CAST(x AS INT);
+CAST(x AS INT) < 0 AND CAST(x AS INT) >= -500;
+
 --------------------------------------
 -- COALESCE
 --------------------------------------
@@ -1135,7 +1168,7 @@ TIMESTAMP_TRUNC(x, YEAR) = CAST(CAST('2021-01-01 01:02:03' AS DATE) AS DATETIME)
 x < CAST('2022-01-01 00:00:00' AS DATETIME) AND x >= CAST('2021-01-01 00:00:00' AS DATETIME);
 
 DATE_TRUNC('day', CAST(x AS DATE)) <= CAST('2021-01-01 01:02:03' AS TIMESTAMP);
-CAST(x AS DATE) < CAST('2021-01-02 01:02:03' AS TIMESTAMP);
+CAST(x AS DATE) < CAST('2021-01-02 00:00:00' AS TIMESTAMP);
 
 --------------------------------------
 -- EQUALITY
@@ -1169,6 +1202,45 @@ x <> 2;
 
 1 + x + 1 = 3 + 1;
 x = 2;
+
+0 - a = 1;
+a = -1;
+
+5 - x = 2;
+x = 3;
+
+5 - x > 2;
+x < 3;
+
+5 - x >= 2;
+x <= 3;
+
+5 - x < 2;
+x > 3;
+
+5 - x <= 2;
+x >= 3;
+
+5 - x <> 2;
+x <> 3;
+
+1 = 0 - a;
+a = -1;
+
+2 > 5 - x;
+x > 3;
+
+2 >= 5 - x;
+x >= 3;
+
+2 < 5 - x;
+x < 3;
+
+2 <= 5 - x;
+x <= 3;
+
+2 <> 5 - x;
+x <> 3;
 
 x - INTERVAL 1 DAY = CAST('2021-01-01' AS DATE);
 x = CAST('2021-01-02' AS DATE);

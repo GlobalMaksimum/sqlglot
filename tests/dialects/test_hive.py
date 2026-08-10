@@ -69,7 +69,7 @@ class TestHive(Validator):
             },
             write={
                 "duckdb": "x << 1",
-                "presto": "BITWISE_ARITHMETIC_SHIFT_LEFT(x, 1)",
+                "presto": "BITWISE_LEFT_SHIFT(x, 1)",
                 "hive": "x << 1",
                 "spark": "SHIFTLEFT(x, 1)",
             },
@@ -81,7 +81,7 @@ class TestHive(Validator):
             },
             write={
                 "duckdb": "x >> 1",
-                "presto": "BITWISE_ARITHMETIC_SHIFT_RIGHT(x, 1)",
+                "presto": "BITWISE_RIGHT_SHIFT(x, 1)",
                 "hive": "x >> 1",
                 "spark": "SHIFTRIGHT(x, 1)",
             },
@@ -365,6 +365,7 @@ class TestHive(Validator):
             "a RLIKE 'x'",
             write={
                 "duckdb": "REGEXP_MATCHES(a, 'x')",
+                "exasol": "a REGEXP_LIKE '.*x.*'",
                 "presto": "REGEXP_LIKE(a, 'x')",
                 "hive": "a RLIKE 'x'",
                 "spark": "a RLIKE 'x'",
@@ -375,6 +376,7 @@ class TestHive(Validator):
             "a REGEXP 'x'",
             write={
                 "duckdb": "REGEXP_MATCHES(a, 'x')",
+                "exasol": "a REGEXP_LIKE '.*x.*'",
                 "presto": "REGEXP_LIKE(a, 'x')",
                 "hive": "a RLIKE 'x'",
                 "spark": "a RLIKE 'x'",
@@ -533,7 +535,7 @@ class TestHive(Validator):
         )
         self.validate_identity("(SELECT 1 UNION SELECT 2) DISTRIBUTE BY z")
         self.validate_identity("(SELECT 1 UNION SELECT 2) DISTRIBUTE BY z SORT BY x")
-        self.validate_identity("(SELECT 1 UNION SELECT 2) CLUSTER BY y DESC")
+        self.validate_identity("(SELECT 1 UNION SELECT 2) CLUSTER BY y")
         self.validate_identity("SELECT * FROM test CLUSTER BY y")
 
         self.validate_identity("(SELECT 1 UNION SELECT 2) SORT BY z")
@@ -699,7 +701,7 @@ class TestHive(Validator):
             "LOCATE('a', x, 3)",
             write={
                 "duckdb": "CASE WHEN STRPOS(SUBSTRING(x, 3), 'a') = 0 THEN 0 ELSE STRPOS(SUBSTRING(x, 3), 'a') + 3 - 1 END",
-                "presto": "IF(STRPOS(SUBSTRING(x, 3), 'a') = 0, 0, STRPOS(SUBSTRING(x, 3), 'a') + 3 - 1)",
+                "presto": "IF(STRPOS(SUBSTR(x, 3), 'a') = 0, 0, STRPOS(SUBSTR(x, 3), 'a') + 3 - 1)",
                 "hive": "LOCATE('a', x, 3)",
                 "spark": "LOCATE('a', x, 3)",
             },
@@ -949,21 +951,78 @@ class TestHive(Validator):
         )
 
         self.validate_all(
-            "SELECT FIRST(sample_col) IGNORE NULLS",
+            "SELECT FIRST(sample_col, TRUE)",
             read={
-                "hive": "SELECT FIRST(sample_col, TRUE)",
-                "spark2": "SELECT FIRST(sample_col, TRUE)",
                 "spark": "SELECT FIRST(sample_col, TRUE)",
                 "databricks": "SELECT FIRST(sample_col, TRUE)",
             },
             write={
+                "hive": "SELECT FIRST(sample_col, TRUE)",
+                "spark2": "SELECT FIRST(sample_col, TRUE)",
+                "spark": "SELECT FIRST(sample_col) IGNORE NULLS",
+                "databricks": "SELECT FIRST(sample_col) IGNORE NULLS",
                 "duckdb": "SELECT ANY_VALUE(sample_col)",
             },
         )
+
+        self.validate_all(
+            "SELECT FIRST_VALUE(sample_col, TRUE)",
+            read={
+                "spark": "SELECT FIRST_VALUE(sample_col, TRUE)",
+                "databricks": "SELECT FIRST_VALUE(sample_col, TRUE)",
+            },
+            write={
+                "hive": "SELECT FIRST_VALUE(sample_col, TRUE)",
+                "spark2": "SELECT FIRST_VALUE(sample_col, TRUE)",
+                "spark": "SELECT FIRST_VALUE(sample_col) IGNORE NULLS",
+                "databricks": "SELECT FIRST_VALUE(sample_col) IGNORE NULLS",
+                "duckdb": "SELECT FIRST_VALUE(sample_col IGNORE NULLS)",
+            },
+        )
+
+        self.validate_all(
+            "SELECT LAST_VALUE(sample_col, TRUE)",
+            read={
+                "spark": "SELECT LAST_VALUE(sample_col, TRUE)",
+                "databricks": "SELECT LAST_VALUE(sample_col, TRUE)",
+            },
+            write={
+                "hive": "SELECT LAST_VALUE(sample_col, TRUE)",
+                "spark2": "SELECT LAST_VALUE(sample_col, TRUE)",
+                "spark": "SELECT LAST_VALUE(sample_col) IGNORE NULLS",
+                "databricks": "SELECT LAST_VALUE(sample_col) IGNORE NULLS",
+                "duckdb": "SELECT LAST_VALUE(sample_col IGNORE NULLS)",
+            },
+        )
+
+        self.validate_all(
+            "SELECT LAST(sample_col, TRUE)",
+            read={
+                "spark": "SELECT LAST(sample_col, TRUE)",
+                "databricks": "SELECT LAST(sample_col, TRUE)",
+            },
+            write={
+                "hive": "SELECT LAST(sample_col, TRUE)",
+                "spark2": "SELECT LAST(sample_col, TRUE)",
+                "spark": "SELECT LAST(sample_col) IGNORE NULLS",
+                "databricks": "SELECT LAST(sample_col) IGNORE NULLS",
+            },
+        )
+
         self.validate_identity(
             "DATE_SUB(CURRENT_DATE, 1 + 1)", "DATE_ADD(CURRENT_DATE, (1 + 1) * -1)"
         )
         self.validate_identity("SELECT ELT(2, 'foo', 'bar', 'baz') AS Result")
+
+        self.validate_all(
+            """WITH t AS (SELECT '{"x-y": "z"}' AS c) SELECT GET_JSON_OBJECT(c, '$.x-y') FROM t""",
+            write={
+                "hive": """WITH t AS (SELECT '{"x-y": "z"}' AS c) SELECT GET_JSON_OBJECT(c, '$.x-y') FROM t""",
+                "spark2": """WITH t AS (SELECT '{"x-y": "z"}' AS c) SELECT GET_JSON_OBJECT(c, '$.x-y') FROM t""",
+                "spark": """WITH t AS (SELECT '{"x-y": "z"}' AS c) SELECT GET_JSON_OBJECT(c, '$.x-y') FROM t""",
+                "databricks": """WITH t AS (SELECT '{"x-y": "z"}' AS c) SELECT GET_JSON_OBJECT(c, '$["x-y"]') FROM t""",
+            },
+        )
 
     def test_escapes(self) -> None:
         self.validate_identity("'\n'", "'\\n'")
@@ -1049,3 +1108,61 @@ class TestHive(Validator):
         quantile_expr.assert_is(exp.Quantile)
         quantile_expr.this.assert_is(exp.Column)
         quantile_expr.args.get("quantile").assert_is(exp.Literal)
+
+    def test_create_function_using(self):
+        # USING JAR
+        self.validate_identity(
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING JAR 'hdfs://path/to/my.jar'"
+        )
+
+        # OR REPLACE TEMPORARY with USING JAR
+        self.validate_identity(
+            "CREATE OR REPLACE TEMPORARY FUNCTION some_func AS 'my_jar.SomeFunctionUDF' USING JAR 's3://bucket/my.jar'"
+        )
+
+        # USING FILE
+        self.validate_identity(
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING FILE 'hdfs://path/to/file.py'"
+        )
+
+        # USING ARCHIVE
+        self.validate_identity(
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING ARCHIVE 'hdfs://path/to/archive.zip'"
+        )
+
+        # Verify the AST node is a Create with UsingProperty
+        expr = self.parse_one(
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING JAR 'hdfs://path/to/my.jar'"
+        )
+        self.assertIsInstance(expr, exp.Create)
+        using_prop = expr.find(exp.UsingProperty)
+        self.assertIsNotNone(using_prop)
+        self.assertEqual(using_prop.args["kind"], "JAR")
+        self.assertEqual(using_prop.this.this, "hdfs://path/to/my.jar")
+
+        # Verify programmatic construction
+        create = exp.Create(
+            this=exp.Table(this=exp.to_identifier("my_func")),
+            kind="FUNCTION",
+            expression=exp.Literal.string("com.example.MyFunc"),
+            properties=exp.Properties(
+                expressions=[
+                    exp.UsingProperty(this=exp.Literal.string("s3://bucket/new.jar"), kind="JAR")
+                ]
+            ),
+        )
+        self.assertEqual(
+            create.sql(dialect="hive"),
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING JAR 's3://bucket/new.jar'",
+        )
+
+        # Verify programmatic modification of the JAR path
+        expr = self.parse_one(
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING JAR 'hdfs://old/path.jar'"
+        )
+        using_prop = expr.find(exp.UsingProperty)
+        using_prop.set("this", exp.Literal.string("hdfs://new/path.jar"))
+        self.assertEqual(
+            expr.sql(dialect="hive"),
+            "CREATE FUNCTION my_func AS 'com.example.MyFunc' USING JAR 'hdfs://new/path.jar'",
+        )

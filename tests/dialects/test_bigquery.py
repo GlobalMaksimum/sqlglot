@@ -24,6 +24,15 @@ class TestBigQuery(Validator):
     maxDiff = None
 
     def test_bigquery(self):
+        self.validate_identity(
+            "SELECT 'foo' 'bar'",
+            "SELECT CONCAT('foo', 'bar')",
+        )
+        self.validate_identity(
+            "SELECT 'foo'/* c */'bar'",
+            "SELECT CONCAT('foo' /* c */, 'bar')",
+        )
+
         for prefix in ("c.db.", "db.", ""):
             with self.subTest(f"Parsing {prefix}INFORMATION_SCHEMA.X into a Table"):
                 table = self.parse_one(f"`{prefix}INFORMATION_SCHEMA.X`", into=exp.Table)
@@ -41,6 +50,69 @@ class TestBigQuery(Validator):
         table = self.parse_one("x-0._y", into=exp.Table)
         self.assertEqual(table.db, "x-0")
         self.assertEqual(table.name, "_y")
+
+        # Domain-scoped (legacy) project IDs (`domain.com:project-id`) contain dots in
+        # the domain that must not be treated as path separators, otherwise the domain
+        # prefix is dropped and the project ID becomes invalid.
+        table = self.parse_one(
+            "`domain.com:project-id.region-us.INFORMATION_SCHEMA.JOBS`", into=exp.Table
+        )
+        self.assertEqual(table.catalog, "domain.com:project-id")
+        self.assertEqual(table.db, "region-us")
+        self.assertEqual(table.name, "INFORMATION_SCHEMA.JOBS")
+
+        table = self.parse_one("`domain.com:project-id.mydataset.mytable`", into=exp.Table)
+        self.assertEqual(table.catalog, "domain.com:project-id")
+        self.assertEqual(table.db, "mydataset")
+        self.assertEqual(table.name, "mytable")
+
+        # A domain-scoped project with no dataset/table must stay in the name position
+        # (like any bare identifier), not be promoted to catalog — otherwise consumers
+        # that read the identifier's name (e.g. macro interpolation) lose the project.
+        table = self.parse_one("`domain.com:project-id`", into=exp.Table)
+        self.assertEqual(table.name, "domain.com:project-id")
+        self.assertIsNone(table.args.get("catalog"))
+        self.assertIsNone(table.args.get("db"))
+
+        # A colon without a domain (no dot before it) is not a domain-scoped project,
+        # so the reference splits on dots as usual.
+        table = self.parse_one("`proj:weird.ds.tbl`", into=exp.Table)
+        self.assertEqual(table.catalog, "proj:weird")
+        self.assertEqual(table.db, "ds")
+        self.assertEqual(table.name, "tbl")
+
+        # Domains with multiple dots (e.g. `a.b.com:`) are kept intact too.
+        table = self.parse_one("`a.b.com:project-id.mydataset.mytable`", into=exp.Table)
+        self.assertEqual(table.catalog, "a.b.com:project-id")
+        self.assertEqual(table.db, "mydataset")
+        self.assertEqual(table.name, "mytable")
+
+        table = self.parse_one(
+            "`a.b.com:project-id.region-us.INFORMATION_SCHEMA.JOBS`", into=exp.Table
+        )
+        self.assertEqual(table.catalog, "a.b.com:project-id")
+        self.assertEqual(table.db, "region-us")
+        self.assertEqual(table.name, "INFORMATION_SCHEMA.JOBS")
+
+        table = self.parse_one("`a.b.com:project-id`", into=exp.Table)
+        self.assertEqual(table.name, "a.b.com:project-id")
+        self.assertIsNone(table.args.get("catalog"))
+        self.assertIsNone(table.args.get("db"))
+
+        self.validate_identity("SELECT * FROM `domain.com:project-id.mydataset.mytable`")
+        self.validate_identity(
+            "SELECT * FROM `domain.com:project-id.region-us.INFORMATION_SCHEMA`.JOBS",
+            "SELECT * FROM `domain.com:project-id.region-us.INFORMATION_SCHEMA.JOBS` AS JOBS",
+        )
+        self.validate_identity(
+            "SELECT * FROM `domain.com:project-id.region-us.INFORMATION_SCHEMA.JOBS`",
+            "SELECT * FROM `domain.com:project-id.region-us.INFORMATION_SCHEMA.JOBS` AS `domain.com:project-id.region-us.INFORMATION_SCHEMA.JOBS`",
+        )
+        self.validate_identity("SELECT * FROM `a.b.com:project-id.mydataset.mytable`")
+        self.validate_identity(
+            "SELECT * FROM `a.b.com:project-id.region-us.INFORMATION_SCHEMA.JOBS`",
+            "SELECT * FROM `a.b.com:project-id.region-us.INFORMATION_SCHEMA.JOBS` AS `a.b.com:project-id.region-us.INFORMATION_SCHEMA.JOBS`",
+        )
 
         self.validate_identity("SAFE.SOME_RANDOM_FUNC(a, b, c)").assert_is(exp.SafeFunc)
         self.validate_identity(
@@ -134,6 +206,10 @@ class TestBigQuery(Validator):
         self.validate_identity("TIME('2008-12-25 15:30:00+08', 'America/Los_Angeles')")
         self.validate_identity(r"SELECT '\n\r\a\v\f\t'")
         self.validate_identity("SELECT * FROM tbl FOR SYSTEM_TIME AS OF z")
+        self.validate_identity(
+            "SELECT * FROM tbl FOR SYSTEM TIME AS OF z",
+            "SELECT * FROM tbl FOR SYSTEM_TIME AS OF z",
+        )
         self.validate_identity("SELECT PARSE_TIMESTAMP('%c', 'Thu Dec 25 07:30:00 2008', 'UTC')")
         self.validate_identity("SELECT ANY_VALUE(fruit HAVING MAX sold) FROM fruits")
         self.validate_identity("SELECT ANY_VALUE(fruit HAVING MIN sold) FROM fruits")
@@ -168,6 +244,7 @@ class TestBigQuery(Validator):
         self.validate_identity("SELECT CAST(CURRENT_DATE AS STRING FORMAT 'DAY') AS current_day")
         self.validate_identity("SAFE_CAST(encrypted_value AS STRING FORMAT 'BASE64')")
         self.validate_identity("CAST(encrypted_value AS STRING FORMAT 'BASE64')")
+        self.validate_identity("CREATE TABLE t CLUSTER BY col1, col2")
         self.validate_identity("DATE(2016, 12, 25)")
         self.validate_identity("DATE(CAST('2016-12-25 23:59:59' AS DATETIME))")
         self.validate_identity("SELECT foo IN UNNEST(bar) AS bla")
@@ -198,6 +275,10 @@ class TestBigQuery(Validator):
         self.validate_identity("BEGIN DECLARE y INT64", check_command_warning=True)
         self.validate_identity("LOOP SET x = x + 1", check_command_warning=True)
         self.validate_identity("REPEAT SET x = x + 1", check_command_warning=True)
+        self.validate_identity(
+            "ALTER TABLE foo DROP PRIMARY KEY IF EXISTS",
+            check_command_warning=True,
+        )
         self.validate_identity("SELECT MAKE_INTERVAL(100, 11, 1, 12, 30, 10)")
         self.validate_identity(
             "WHILE i < ARRAY_LENGTH(batches) DO SET x = batches[OFFSET(i)]",
@@ -206,6 +287,13 @@ class TestBigQuery(Validator):
         self.validate_identity("BEGIN TRANSACTION")
         self.validate_identity("COMMIT TRANSACTION")
         self.validate_identity("ROLLBACK TRANSACTION")
+        for load_data_sql in (
+            "LOAD DATA OVERWRITE mydataset.table1 FROM FILES(FORMAT='AVRO', uris=['gs://bucket/path/file.avro'])",
+            "LOAD DATA INTO TABLE mydataset.table1 FROM FILES(FORMAT='AVRO', uris=['gs://bucket/path/file.avro'])",
+            "LOAD DATA INTO TEMP TABLE mydataset.table1 FROM FILES(FORMAT='AVRO', uris=['gs://bucket/path/file.avro'])",
+        ):
+            with self.subTest(load_data_sql=load_data_sql):
+                self.validate_identity(load_data_sql).assert_is(exp.LoadData)
         self.validate_identity("CAST(x AS BIGNUMERIC)")
         self.validate_identity("SELECT y + 1 FROM x GROUP BY y + 1 ORDER BY 1")
         self.validate_identity("SELECT TIMESTAMP_SECONDS(2) AS t")
@@ -1764,8 +1852,8 @@ WHERE
                 "trino": "IF(y <> 0, CAST(x AS DOUBLE) / y, NULL)",
                 "hive": "IF(y <> 0, x / y, NULL)",
                 "spark2": "IF(y <> 0, x / y, NULL)",
-                "spark": "IF(y <> 0, x / y, NULL)",
-                "databricks": "IF(y <> 0, x / y, NULL)",
+                "spark": "TRY_DIVIDE(x, y)",
+                "databricks": "TRY_DIVIDE(x, y)",
                 "snowflake": "IFF(y <> 0, x / y, NULL)",
                 "postgres": "CASE WHEN y <> 0 THEN CAST(x AS DOUBLE PRECISION) / y ELSE NULL END",
             },
@@ -1779,8 +1867,8 @@ WHERE
                 "trino": "IF((2 * y) <> 0, CAST((x + 1) AS DOUBLE) / (2 * y), NULL)",
                 "hive": "IF((2 * y) <> 0, (x + 1) / (2 * y), NULL)",
                 "spark2": "IF((2 * y) <> 0, (x + 1) / (2 * y), NULL)",
-                "spark": "IF((2 * y) <> 0, (x + 1) / (2 * y), NULL)",
-                "databricks": "IF((2 * y) <> 0, (x + 1) / (2 * y), NULL)",
+                "spark": "TRY_DIVIDE(x + 1, 2 * y)",
+                "databricks": "TRY_DIVIDE(x + 1, 2 * y)",
                 "snowflake": "IFF((2 * y) <> 0, (x + 1) / (2 * y), NULL)",
                 "postgres": "CASE WHEN (2 * y) <> 0 THEN CAST((x + 1) AS DOUBLE PRECISION) / (2 * y) ELSE NULL END",
             },
@@ -1841,6 +1929,7 @@ WHERE
             },
         )
 
+        self.validate_identity("EXPORT DATA OPTIONS (URI='gs://bucket/folder/*.csv') AS (SELECT 1)")
         self.validate_identity(
             "EXPORT DATA OPTIONS (URI='gs://path*.csv.gz', FORMAT='CSV') AS SELECT * FROM all_rows"
         )
@@ -1894,6 +1983,13 @@ WHERE
         )
         self.validate_identity(
             "SELECT PARSE_DATETIME('%a %b %e %I:%M:%S %Y', 'Thu Dec 25 07:30:00 2008')"
+        )
+        self.validate_all(
+            "SELECT PARSE_DATETIME('%F %T', '2023-01-15 14:30:00')",
+            write={
+                "snowflake": "SELECT PARSE_DATETIME('2023-01-15 14:30:00', '%Y-%m-%d %H:%M:%S')",
+                "duckdb": "SELECT STRPTIME('1970 ' || '2023-01-15 14:30:00', '%Y ' || '%Y-%m-%d %H:%M:%S')",
+            },
         )
         self.validate_identity("FORMAT_TIME('%R', CAST('15:30:00' AS TIME))")
         self.validate_identity("PARSE_TIME('%I:%M:%S', '07:30:00')")
@@ -2089,6 +2185,9 @@ WHERE
 
     def test_errors(self):
         with self.assertRaises(ParseError):
+            self.parse_one("SELECT 'foo''bar'")
+
+        with self.assertRaises(ParseError):
             self.parse_one("SELECT * FROM a - b.c.d2")
 
         with self.assertRaises(TokenError):
@@ -2227,6 +2326,9 @@ WHERE
                     "duckdb": "a[1]",
                     "presto": "a[1]",
                 },
+            )
+            self.validate_identity(
+                "WITH foo AS (SELECT [1, 2, 3] AS array_col) SELECT array_col[offset] FROM foo CROSS JOIN UNNEST(array_col) WITH OFFSET AS offset",
             )
 
         with self.assertLogs(parser_logger) as cm:
@@ -2410,6 +2512,13 @@ OPTIONS (
             "SELECT * FROM ML.FORECAST(MODEL `mydataset.mymodel`, (SELECT * FROM mydataset.query_table), STRUCT())"
         )
 
+        self.validate_identity(
+            "SELECT * FROM AI.FORECAST(TABLE citibike_trips, data_col => 'num_trips', timestamp_col => 'date', horizon => 30)"
+        )
+        self.validate_identity(
+            "SELECT * FROM AI.FORECAST((SELECT * FROM citibike_trips), data_col => 'num_trips', timestamp_col => 'date', horizon => 30)"
+        )
+
         for name in ("GENERATE_EMBEDDING", "GENERATE_TEXT_EMBEDDING"):
             with self.subTest(f"Testing BigQuery's ML function {name}"):
                 ast = self.validate_identity(
@@ -2420,6 +2529,31 @@ OPTIONS (
                 )
 
                 assert ast.find(exp.GenerateEmbedding)
+
+        self.validate_identity(
+            "SELECT * FROM ML.GENERATE_TEXT(MODEL `mydataset.gemini_model`, TABLE `mydataset.prompt_table`, STRUCT(0.15 AS temperature))"
+        )
+        self.validate_identity(
+            "SELECT * FROM AI.GENERATE_TEXT(MODEL `mydataset.gemini_model`, TABLE `mydataset.prompt_table`, STRUCT(0.15 AS temperature))"
+        )
+        self.validate_identity(
+            "SELECT * FROM AI.GENERATE_TABLE(MODEL `mydataset.gemini_model`, (SELECT 'Q' AS prompt), STRUCT('name STRING' AS output_schema))"
+        )
+        self.validate_identity(
+            "SELECT AI.GENERATE_BOOL(MODEL `mydataset.gemini_model`, 'Is sky blue?')"
+        )
+
+        ast = self.validate_identity("SELECT AI.EMBED('hello')")
+        assert isinstance(ast.expressions[0], exp.Dot)
+        assert isinstance(ast.expressions[0].expression, exp.AIEmbed)
+
+        ast = self.validate_identity("SELECT AI.SIMILARITY('a', 'b')")
+        assert isinstance(ast.expressions[0], exp.Dot)
+        assert isinstance(ast.expressions[0].expression, exp.AISimilarity)
+
+        ast = self.validate_identity("SELECT AI.GENERATE('Write a haiku')")
+        assert isinstance(ast.expressions[0], exp.Dot)
+        assert isinstance(ast.expressions[0].expression, exp.AIGenerate)
 
     def test_merge(self):
         self.validate_all(
@@ -2445,7 +2579,7 @@ OPTIONS (
             },
         )
 
-    @mock.patch("sqlglot.dialects.bigquery.logger")
+    @mock.patch("sqlglot.generators.bigquery.logger")
     def test_pushdown_cte_column_names(self, logger):
         with self.assertRaises(UnsupportedError):
             transpile(
@@ -2694,6 +2828,34 @@ OPTIONS (
                     "bigquery": f"SELECT SUM(f1) OVER (ORDER BY f2 {sort_order}) FROM t",
                 },
             )
+
+    def test_null_ordering_in_analytic_functions(self):
+        for func_call in (
+            "FIRST_VALUE(col1)",
+            "LAST_VALUE(col1)",
+            "NTH_VALUE(col1, 2)",
+        ):
+            for sort_order, null_order in (("ASC", "NULLS LAST"), ("DESC", "NULLS FIRST")):
+                with self.subTest(f"{func_call} with {sort_order} {null_order} ROWS"):
+                    self.validate_identity(
+                        f"WITH t AS (SELECT 1 AS id, 2 AS col1) SELECT {func_call} OVER (PARTITION BY id ORDER BY col1 {sort_order} {null_order} ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM t"
+                    )
+
+        for func_call in (
+            "LAG(col1)",
+            "LEAD(col1)",
+            "CUME_DIST()",
+            "DENSE_RANK()",
+            "NTILE(4)",
+            "PERCENT_RANK()",
+            "RANK()",
+            "ROW_NUMBER()",
+        ):
+            for sort_order, null_order in (("ASC", "NULLS LAST"), ("DESC", "NULLS FIRST")):
+                with self.subTest(f"{func_call} with {sort_order} {null_order}"):
+                    self.validate_identity(
+                        f"WITH t AS (SELECT 1 AS id, 2 AS col1) SELECT {func_call} OVER (PARTITION BY id ORDER BY col1 {sort_order} {null_order}) FROM t"
+                    )
 
     def test_json_extract(self):
         self.validate_all(
@@ -2959,6 +3121,32 @@ OPTIONS (
             },
         )
 
+    def test_cast_format_with_parentheses(self):
+        self.validate_identity(
+            "SELECT CAST('2026-03-24' AS STRING FORMAT ('YYYY'))",
+            "SELECT CAST('2026-03-24' AS STRING FORMAT 'YYYY')",
+        )
+
+        self.validate_identity(
+            "SELECT CAST(date AS STRING FORMAT ('YYYY')) FROM (SELECT DATE('2026-03-24') AS date)",
+            "SELECT CAST(date AS STRING FORMAT 'YYYY') FROM (SELECT DATE('2026-03-24') AS date)",
+        )
+
+        self.validate_identity(
+            "SELECT CAST(date AS STRING FORMAT ('YYYY-MM-DD'))",
+            "SELECT CAST(date AS STRING FORMAT 'YYYY-MM-DD')",
+        )
+
+        self.validate_identity(
+            "SELECT CAST(timestamp AS STRING FORMAT ('YYYY-MM-DD') AT TIME ZONE 'UTC')",
+            "SELECT CAST(timestamp AS STRING FORMAT 'YYYY-MM-DD' AT TIME ZONE 'UTC')",
+        )
+
+        self.validate_identity(
+            "SELECT CAST(date AS TIMESTAMP FORMAT ('YYYY-MM-DD HH24:MI:SS'))",
+            "SELECT PARSE_TIMESTAMP('%F %T', date)",
+        )
+
     def test_string_agg(self):
         self.validate_identity("STRING_AGG(a, ' & ')")
         self.validate_identity("STRING_AGG(DISTINCT a, ' & ')")
@@ -3178,7 +3366,7 @@ OPTIONS (
             -- bar, /* the thing */
         from facts
         """
-        expected = "SELECT\n  id,\n  foo\n/* bar, /* the thing * / */\nFROM facts"
+        expected = "SELECT\n  id,\n  foo\n/* bar, / * the thing * / */\nFROM facts"
         self.assertEqual(self.parse_one(sql).sql("bigquery", pretty=True), expected)
 
     def test_unnest_with_offset(self):
@@ -3214,7 +3402,7 @@ OPTIONS (
             write={
                 "bigquery": "SELECT id, mnth FROM t CROSS JOIN UNNEST(GENERATE_DATE_ARRAY(start_month, DATE_TRUNC(CURRENT_DATE, MONTH), INTERVAL '1' MONTH)) AS mnth",
                 "duckdb": "SELECT id, mnth FROM t CROSS JOIN UNNEST(CAST(GENERATE_SERIES(start_month, DATE_TRUNC('MONTH', CURRENT_DATE), INTERVAL '1' MONTH) AS DATE[])) AS _t0(mnth)",
-                "snowflake": "SELECT id, DATEADD(MONTH, CAST(mnth AS INT), CAST(start_month AS DATE)) AS mnth FROM t, LATERAL FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, (DATEDIFF(MONTH, start_month, DATE_TRUNC('MONTH', CURRENT_DATE)) + 1 - 1) + 1)) AS _t0(seq, key, path, index, mnth, this)",
+                "snowflake": "SELECT id, DATEADD(MONTH, CAST(mnth AS INT), CAST(start_month AS DATE)) AS mnth FROM t, LATERAL FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, DATEDIFF(MONTH, start_month, DATE_TRUNC('MONTH', CURRENT_DATE)) + 1)) AS _t0(seq, key, path, index, mnth, this)",
             },
         )
         self.validate_all(
@@ -3222,7 +3410,7 @@ OPTIONS (
             write={
                 "bigquery": "SELECT id, mnth AS a_mnth FROM t CROSS JOIN UNNEST(GENERATE_DATE_ARRAY(start_month, DATE_TRUNC(CURRENT_DATE, MONTH), INTERVAL '1' MONTH)) AS mnth",
                 "duckdb": "SELECT id, mnth AS a_mnth FROM t CROSS JOIN UNNEST(CAST(GENERATE_SERIES(start_month, DATE_TRUNC('MONTH', CURRENT_DATE), INTERVAL '1' MONTH) AS DATE[])) AS _t0(mnth)",
-                "snowflake": "SELECT id, DATEADD(MONTH, CAST(mnth AS INT), CAST(start_month AS DATE)) AS a_mnth FROM t, LATERAL FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, (DATEDIFF(MONTH, start_month, DATE_TRUNC('MONTH', CURRENT_DATE)) + 1 - 1) + 1)) AS _t0(seq, key, path, index, mnth, this)",
+                "snowflake": "SELECT id, DATEADD(MONTH, CAST(mnth AS INT), CAST(start_month AS DATE)) AS a_mnth FROM t, LATERAL FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, DATEDIFF(MONTH, start_month, DATE_TRUNC('MONTH', CURRENT_DATE)) + 1)) AS _t0(seq, key, path, index, mnth, this)",
             },
         )
         self.validate_all(
@@ -3230,7 +3418,7 @@ OPTIONS (
             write={
                 "bigquery": "SELECT id, mnth + 1 AS a_mnth FROM t CROSS JOIN UNNEST(GENERATE_DATE_ARRAY(start_month, DATE_TRUNC(CURRENT_DATE, MONTH), INTERVAL '1' MONTH)) AS mnth",
                 "duckdb": "SELECT id, mnth + 1 AS a_mnth FROM t CROSS JOIN UNNEST(CAST(GENERATE_SERIES(start_month, DATE_TRUNC('MONTH', CURRENT_DATE), INTERVAL '1' MONTH) AS DATE[])) AS _t0(mnth)",
-                "snowflake": "SELECT id, DATEADD(MONTH, CAST(mnth AS INT), CAST(start_month AS DATE)) + 1 AS a_mnth FROM t, LATERAL FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, (DATEDIFF(MONTH, start_month, DATE_TRUNC('MONTH', CURRENT_DATE)) + 1 - 1) + 1)) AS _t0(seq, key, path, index, mnth, this)",
+                "snowflake": "SELECT id, DATEADD(MONTH, CAST(mnth AS INT), CAST(start_month AS DATE)) + 1 AS a_mnth FROM t, LATERAL FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, DATEDIFF(MONTH, start_month, DATE_TRUNC('MONTH', CURRENT_DATE)) + 1)) AS _t0(seq, key, path, index, mnth, this)",
             },
         )
 
@@ -3267,6 +3455,45 @@ OPTIONS (
             "EXTRACT(WEEK(THURSDAY) FROM DATE '2013-12-25')",
             "EXTRACT(WEEK(THURSDAY) FROM CAST('2013-12-25' AS DATE))",
         )
+
+        week_trunc = {
+            "MONDAY": ("WEEK(MONDAY)", "DATE_TRUNC('WEEK', date)"),
+            "TUESDAY": (
+                "WEEK(TUESDAY)",
+                "CAST(DATE_TRUNC('WEEK', date + INTERVAL '-1' DAY) + INTERVAL '1' DAY AS DATE)",
+            ),
+            "WEDNESDAY": (
+                "WEEK(WEDNESDAY)",
+                "CAST(DATE_TRUNC('WEEK', date + INTERVAL '-2' DAY) + INTERVAL '2' DAY AS DATE)",
+            ),
+            "THURSDAY": (
+                "WEEK(THURSDAY)",
+                "CAST(DATE_TRUNC('WEEK', date + INTERVAL '-3' DAY) + INTERVAL '3' DAY AS DATE)",
+            ),
+            "FRIDAY": (
+                "WEEK(FRIDAY)",
+                "CAST(DATE_TRUNC('WEEK', date + INTERVAL '-4' DAY) + INTERVAL '4' DAY AS DATE)",
+            ),
+            "SATURDAY": (
+                "WEEK(SATURDAY)",
+                "CAST(DATE_TRUNC('WEEK', date + INTERVAL '-5' DAY) + INTERVAL '5' DAY AS DATE)",
+            ),
+            "SUNDAY": (
+                "WEEK",
+                "CAST(DATE_TRUNC('WEEK', date + INTERVAL '1' DAY) + INTERVAL '-1' DAY AS DATE)",
+            ),
+        }
+        for day, (bq_unit, duckdb_sql) in week_trunc.items():
+            with self.subTest(
+                f"Testing transpilation of DATE_TRUNC from Bigquery to Duckdb for unit: {day}"
+            ):
+                self.validate_all(
+                    f"SELECT DATE_TRUNC(date, WEEK({day}))",
+                    write={
+                        "bigquery": f"SELECT DATE_TRUNC(date, {bq_unit})",
+                        "duckdb": f"SELECT {duckdb_sql}",
+                    },
+                )
 
         # BigQuery → DuckDB transpilation tests for DATE_DIFF with week units
         self.validate_all(
@@ -3678,6 +3905,22 @@ OPTIONS (
                     write={
                         "bigquery": "SELECT CAST('1' AS BIGNUMERIC)",
                         "duckdb": "SELECT CAST('1' AS DECIMAL(38, 5))",
+                    },
+                )
+
+                self.validate_all(
+                    f"DECLARE x {type_}(20, 4)",
+                    write={
+                        "bigquery": "DECLARE x BIGNUMERIC(20, 4)",
+                        "duckdb": "DECLARE x DECIMAL(20, 4)",
+                    },
+                )
+
+                self.validate_all(
+                    f"DECLARE x {type_}(76, 38)",
+                    write={
+                        "bigquery": "DECLARE x BIGNUMERIC(76, 38)",
+                        "duckdb": "DECLARE x DECIMAL(38, 38)",
                     },
                 )
 

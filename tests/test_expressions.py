@@ -6,7 +6,7 @@ import unittest
 from sqlglot import ParseError, alias, exp, parse_one
 
 
-class TestExpressions(unittest.TestCase):
+class TestExprs(unittest.TestCase):
     maxDiff = None
 
     def test_to_s(self):
@@ -239,7 +239,9 @@ class TestExpressions(unittest.TestCase):
         self.assertEqual(exp.table_name(exp.to_table("@foo", dialect="snowflake")), "@foo")
         self.assertEqual(exp.table_name(bq_dashed_table, identify=True), '"a-1"."b"."c"')
         self.assertEqual(
-            exp.table_name(parse_one("foo.`{bar,er}`", read="databricks"), dialect="databricks"),
+            exp.table_name(
+                parse_one("foo.`{bar,er}`", read="databricks", into=exp.Table), dialect="databricks"
+            ),
             "foo.`{bar,er}`",
         )
         self.assertEqual(
@@ -527,6 +529,12 @@ class TestExpressions(unittest.TestCase):
             },
         )
 
+    def test_hash_invalidated_on_append(self):
+        expr = parse_one("SELECT a")
+        hash(expr)  # populate the cached _hash
+        expr.append("expressions", exp.column("b"))
+        self.assertEqual(hash(expr), hash(parse_one("SELECT a, b")))
+
     def test_sql(self):
         self.assertEqual(parse_one("x + y * 2").sql(), "x + y * 2")
         self.assertEqual(parse_one('select "x"').sql(dialect="hive", pretty=True), "SELECT\n  `x`")
@@ -665,8 +673,8 @@ class TestExpressions(unittest.TestCase):
         expression = parse_one("SELECT * FROM (SELECT * FROM x)")
         self.assertEqual(len(list(expression.walk())), 9)
         self.assertEqual(len(list(expression.walk(bfs=False))), 9)
-        self.assertTrue(all(isinstance(e, exp.Expression) for e in expression.walk()))
-        self.assertTrue(all(isinstance(e, exp.Expression) for e in expression.walk(bfs=False)))
+        self.assertTrue(all(isinstance(e, exp.Expr) for e in expression.walk()))
+        self.assertTrue(all(isinstance(e, exp.Expr) for e in expression.walk(bfs=False)))
 
     def test_str_position_order(self):
         str_position_exp = parse_one("STR_POSITION('mytest', 'test')")
@@ -832,6 +840,16 @@ class TestExpressions(unittest.TestCase):
         self.assertEqual(alias("foo * 2", "2bar").sql(), 'foo * 2 AS "2bar"')
         self.assertEqual(alias('"foo"', "_bar").sql(), '"foo" AS _bar')
         self.assertEqual(alias("foo", "bar", quoted=True).sql(), 'foo AS "bar"')
+
+    def test_alias_with_placeholder(self):
+        # Snowflake's `AS :name` syntax parses the alias as a Placeholder node.
+        # Regression test: Expression.alias should return the placeholder name, not "".
+        expr = parse_one("SELECT PARSE_JSON(col) AS :userInfo FROM t", dialect="snowflake")
+        select = expr.selects[0]
+        self.assertIsInstance(select.args.get("alias"), exp.Placeholder)
+        self.assertEqual(select.alias, "userInfo")
+        self.assertEqual(select.alias_or_name, "userInfo")
+        self.assertEqual(select.output_name, "userInfo")
 
     def test_unit(self):
         unit = parse_one("timestamp_trunc(current_timestamp, week(thursday))")
@@ -1243,7 +1261,7 @@ FROM foo""",
         parse_one("x").assert_is(exp.Column)
 
         with self.assertRaisesRegex(
-            AssertionError, "x is not <class 'sqlglot.expressions.Identifier'>\\."
+            AssertionError, "x is not <class 'sqlglot.expressions.core.Identifier'>\\."
         ):
             parse_one("x").assert_is(exp.Identifier)
 
@@ -1328,3 +1346,19 @@ FROM foo""",
 
         expr1.update_positions(expr2)
         assert expr1.meta == {}
+
+    def test_pipe_and_apply(self) -> None:
+        def add_val(expr: exp.Expr, val: int, *, squared: bool) -> exp.Expr:
+            nb = val**2 if squared else val
+            return expr + nb
+
+        def add_val_alt(val: int, squared: bool, expr: exp.Expr) -> exp.Expr:
+            return add_val(expr, val, squared=squared)
+
+        col = exp.column("age")
+        added = add_val(col, 5, squared=True)
+
+        self.assertEqual(col, col.apply(lambda x: x))
+
+        self.assertEqual(col.pipe(add_val, 5, squared=True), added)
+        self.assertEqual(col.pipe(lambda e: add_val_alt(5, True, e)), added)

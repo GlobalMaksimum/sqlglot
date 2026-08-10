@@ -27,6 +27,115 @@ class TestStarrocks(Validator):
 
         self.validate_identity("CURRENT_VERSION()")
 
+        self.validate_identity("SELECT t1.id FROM t1 LEFT ANTI JOIN t2 ON t1.id = t2.id")
+        self.validate_identity("SELECT t1.id FROM t1 LEFT SEMI JOIN t2 ON t1.id = t2.id")
+
+    def test_min_max_by(self):
+        # StarRocks has MIN_BY/MAX_BY, but no ARG_MIN/ARG_MAX
+        # https://docs.starrocks.io/docs/sql-reference/sql-functions/aggregate-functions/min_by/
+        self.validate_identity("SELECT MIN_BY(name, ts) FROM t")
+        self.validate_identity("SELECT MAX_BY(name, ts) FROM t")
+        self.validate_identity("SELECT MIN_BY(x, y) OVER (PARTITION BY z) FROM t")
+
+        self.validate_all(
+            "SELECT MAX_BY(a, b), MIN_BY(a, b) FROM t",
+            read={
+                "clickhouse": "SELECT argMax(a, b), argMin(a, b) FROM t",
+                "presto": "SELECT MAX_BY(a, b), MIN_BY(a, b) FROM t",
+                "spark": "SELECT MAX_BY(a, b), MIN_BY(a, b) FROM t",
+            },
+            write={"starrocks": "SELECT MAX_BY(a, b), MIN_BY(a, b) FROM t"},
+        )
+
+    def test_map(self):
+        # StarRocks' MAP() is a variadic constructor: MAP(k1, v1, k2, v2, ...)
+        # https://docs.starrocks.io/docs/sql-reference/sql-functions/map-functions/map/
+        self.validate_identity("SELECT MAP('a', 1, 'b', 2)")
+        self.validate_identity("SELECT MAP('a', 1, 'b', 2)['a']")
+
+        self.validate_all(
+            "SELECT MAP('a', 1, 'b', 2)",
+            read={
+                "hive": "SELECT MAP('a', 1, 'b', 2)",
+                "spark": "SELECT MAP('a', 1, 'b', 2)",
+            },
+            write={
+                "starrocks": "SELECT MAP('a', 1, 'b', 2)",
+                "duckdb": "SELECT MAP(['a', 'b'], [1, 2])",
+            },
+        )
+
+        # The two-array MAP([keys], [values]) form must also produce StarRocks' variadic MAP
+        self.validate_all(
+            "SELECT MAP('a', 1, 'b', 2)",
+            read={
+                "duckdb": "SELECT MAP(['a', 'b'], [1, 2])",
+                "presto": "SELECT MAP(ARRAY['a', 'b'], ARRAY[1, 2])",
+            },
+            write={"starrocks": "SELECT MAP('a', 1, 'b', 2)"},
+        )
+
+    def test_array_contains_all(self):
+        # StarRocks uses ARRAY_CONTAINS_ALL, not the Postgres `@>` operator
+        # https://docs.starrocks.io/docs/sql-reference/sql-functions/array-functions/array_contains_all/
+        self.validate_identity("SELECT ARRAY_CONTAINS_ALL([1, 2, 3], [1, 2])")
+
+        self.validate_all(
+            "SELECT ARRAY_CONTAINS_ALL([1, 2, 3], [1, 2])",
+            read={
+                "duckdb": "SELECT [1, 2, 3] @> [1, 2]",
+                "postgres": "SELECT ARRAY[1, 2, 3] @> ARRAY[1, 2]",
+            },
+            write={"starrocks": "SELECT ARRAY_CONTAINS_ALL([1, 2, 3], [1, 2])"},
+        )
+
+        # The inverse `a <@ b` (ArrayContainedBy) is ARRAY_CONTAINS_ALL(b, a)
+        self.validate_all(
+            "SELECT ARRAY_CONTAINS_ALL([1, 2, 3], [1, 2])",
+            read={
+                "duckdb": "SELECT [1, 2] <@ [1, 2, 3]",
+                "postgres": "SELECT ARRAY[1, 2] <@ ARRAY[1, 2, 3]",
+            },
+            write={"starrocks": "SELECT ARRAY_CONTAINS_ALL([1, 2, 3], [1, 2])"},
+        )
+
+    def test_trim(self):
+        # StarRocks uses the function form TRIM(str, chars)/LTRIM/RTRIM,
+        # not MySQL's TRIM(chars FROM str) syntax
+        # https://docs.starrocks.io/docs/sql-reference/sql-functions/string-functions/trim/
+        self.validate_identity("SELECT TRIM('  hi  ')")
+        self.validate_identity("SELECT TRIM('--hi--', '-')")
+        self.validate_identity("SELECT LTRIM('xxhi', 'x')")
+        self.validate_identity("SELECT RTRIM('hixx', 'x')")
+
+        self.validate_all(
+            "SELECT TRIM('--hi--', '-')",
+            read={"": "SELECT TRIM('-' FROM '--hi--')"},
+            write={"starrocks": "SELECT TRIM('--hi--', '-')"},
+        )
+        self.validate_all(
+            "SELECT LTRIM('xxhi', 'x')",
+            read={"": "SELECT TRIM(LEADING 'x' FROM 'xxhi')"},
+            write={"starrocks": "SELECT LTRIM('xxhi', 'x')"},
+        )
+        self.validate_all(
+            "SELECT RTRIM('hixx', 'x')",
+            read={"": "SELECT TRIM(TRAILING 'x' FROM 'hixx')"},
+            write={"starrocks": "SELECT RTRIM('hixx', 'x')"},
+        )
+
+    def test_distinct_on(self):
+        self.validate_identity(
+            "SELECT DISTINCT ON (a) a, b FROM x ORDER BY c DESC",
+            "SELECT a, b FROM (SELECT a AS a, b AS b, ROW_NUMBER() OVER (PARTITION BY a ORDER BY c DESC) AS _row_number FROM x) AS _t WHERE _row_number = 1",
+        )
+
+    def test_generate_date_array(self):
+        self.validate_identity(
+            "SELECT * FROM UNNEST(GENERATE_DATE_ARRAY(DATE '2020-01-01', DATE '2020-02-01', INTERVAL 1 WEEK)) AS _q(date_week)",
+            "WITH RECURSIVE _generated_dates(date_week) AS (SELECT CAST('2020-01-01' AS DATE) AS date_week UNION ALL SELECT CAST(DATE_ADD(date_week, INTERVAL 1 WEEK) AS DATE) FROM _generated_dates WHERE CAST(DATE_ADD(date_week, INTERVAL 1 WEEK) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_week FROM _generated_dates) AS _generated_dates",
+        )
+
     def test_ddl(self):
         self.validate_identity("INSERT OVERWRITE my_table SELECT * FROM other_table")
         self.validate_identity("CREATE TABLE t (c INT) COMMENT 'c'")
@@ -84,7 +193,7 @@ class TestStarrocks(Validator):
             },
         )
 
-        multi_column_cluster = exp.Cluster(
+        multi_column_cluster = exp.ClusterProperty(
             expressions=[
                 exp.column("c"),
                 exp.column("d"),
@@ -92,7 +201,7 @@ class TestStarrocks(Validator):
         )
         self.assertEqual(multi_column_cluster.sql(dialect="starrocks"), "ORDER BY (c, d)")
 
-        single_column_cluster = exp.Cluster(expressions=[exp.column("c")])
+        single_column_cluster = exp.ClusterProperty(expressions=[exp.column("c")])
         self.assertEqual(single_column_cluster.sql(dialect="starrocks"), "ORDER BY (c)")
 
         mv_properties = [
@@ -141,6 +250,19 @@ class TestStarrocks(Validator):
         self.validate_identity(
             "SELECT DATE_DIFF('MINUTE', '2010-11-30 23:59:59', '2010-11-30 20:58:59')"
         )
+
+    def test_date_add_sub(self):
+        # Standard INTERVAL form
+        self.validate_identity("SELECT DATE_ADD(x, INTERVAL '3' DAY)")
+        self.validate_identity("SELECT DATE_SUB(x, INTERVAL '3' MONTH)")
+
+        # Two-argument shorthand - default unit DAY
+        self.validate_identity("SELECT DATE_SUB(x, 3)", "SELECT DATE_SUB(x, INTERVAL 3 DAY)")
+        self.validate_identity("SELECT DATE_ADD(x, 7)", "SELECT DATE_ADD(x, INTERVAL 7 DAY)")
+
+        # ADDDATE / SUBDATE aliases
+        self.validate_identity("SELECT ADDDATE(x, 7)", "SELECT DATE_ADD(x, INTERVAL 7 DAY)")
+        self.validate_identity("SELECT SUBDATE(x, 7)", "SELECT DATE_SUB(x, INTERVAL 7 DAY)")
 
     def test_regex(self):
         self.validate_all(
@@ -263,7 +385,7 @@ class TestStarrocks(Validator):
                     f"CREATE TABLE test_table (col1 INT, col2 DATE) PARTITION BY ({cols})",
                 )
 
-        # Expression-based partitioning
+        # Expr-based partitioning
         self.validate_identity(
             "CREATE TABLE test_table (col2 DATE) PARTITION BY DATE_TRUNC('DAY', col2)"
         )

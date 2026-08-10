@@ -118,7 +118,7 @@ class TestTranspile(unittest.TestCase):
     def test_comments(self):
         self.validate(
             "select /* asfd /* asdf */ asdf */ 1",
-            "/* asfd /* asdf */ asdf */ SELECT 1",
+            "/* asfd / * asdf * / asdf */ SELECT 1",
         )
         self.validate(
             "SELECT c /* foo */ AS alias",
@@ -163,6 +163,10 @@ class TestTranspile(unittest.TestCase):
             "SELECT * FROM table /* comment 1 */ /* comment 2 */",
         )
         self.validate("SELECT 1 FROM foo -- comment", "SELECT 1 FROM foo /* comment */")
+        self.validate(
+            "SELECT * FROM\n/* comment */\ndb.schema1.tbl PIVOT (SUM(a) FOR b IN ('x', 'y'))",
+            "SELECT * FROM db.schema1.tbl PIVOT(SUM(a) FOR b IN ('x', 'y')) /* comment */",
+        )
         self.validate("SELECT --+5\nx FROM foo", "/* +5 */ SELECT x FROM foo")
         self.validate("SELECT --!5\nx FROM foo", "/* !5 */ SELECT x FROM foo")
         self.validate(
@@ -212,7 +216,9 @@ SELECT * FROM foo
 -- comment 2
 -- comment 3
 SELECT * FROM foo""",
-            """/* comment 1 */ /* comment 2 */ /* comment 3 */
+            """/* comment 1 */
+/* comment 2 */
+/* comment 3 */
 SELECT
   *
 FROM foo""",
@@ -363,7 +369,9 @@ FROM v""",
             -- comment3
             DROP TABLE IF EXISTS db.tba
             """,
-            """/* comment1 */ /* comment2 */ /* comment3 */
+            """/* comment1 */
+/* comment2 */
+/* comment3 */
 DROP TABLE IF EXISTS db.tba""",
             pretty=True,
         )
@@ -424,7 +432,8 @@ INNER JOIN b""",
             """SELECT
   *
 FROM a
-/* comment 1 */ /* comment 2 */
+/* comment 1 */
+/* comment 2 */
 LEFT OUTER JOIN b""",
             pretty=True,
         )
@@ -615,7 +624,8 @@ FROM tbl1""",
   SELECT
     2 AS n /* b */
   FROM (
-    /* c */ /* c2 */
+    /* c */
+    /* c2 */
     SELECT
       a /* d */
     FROM t
@@ -633,6 +643,90 @@ WHERE
 ORDER BY
   n /* g */ /* h */""",
             pretty=True,
+        )
+
+        # Round-trip stress: multiple trailing comments on the same expression must
+        # stay space-separated (same line) in pretty mode. Re-parsing would otherwise
+        # detach the later ones onto the next token.
+        self.validate(
+            "SELECT a /* foo */ /* bar */ FROM tbl",
+            """SELECT
+  a /* foo */ /* bar */
+FROM tbl""",
+            pretty=True,
+        )
+        self.validate(
+            "SELECT x FROM t WHERE x = 1 /* a */ /* b */ /* c */",
+            """SELECT
+  x
+FROM t
+WHERE
+  x = 1 /* a */ /* b */ /* c */""",
+            pretty=True,
+        )
+
+        self.validate(
+            """SELECT
+  *
+FROM x
+WHERE
+  a = 1 AND /*
+  hello
+  world
+*/ 1 = 0""",
+            """SELECT
+  *
+FROM x
+WHERE
+  a = 1 AND /*
+  hello
+  world
+*/ 1 = 0""",
+            pretty=True,
+        )
+        self.validate(
+            """SELECT
+  *
+FROM x
+WHERE
+  a = 1
+  AND /*
+  line1
+
+  line3
+*/ b = 2""",
+            """SELECT
+  *
+FROM x
+WHERE
+  a = 1
+  AND /*
+  line1
+
+  line3
+*/ b = 2""",
+            pretty=True,
+        )
+
+    def test_comment_single_line_with_block_close(self):
+        # Single-line comments containing */ must be escaped when converted to block comments,
+        # otherwise the */ prematurely closes the block comment and turns comment text into SQL.
+        self.validate(
+            "-- aa */ SELECT * FROM secret_table --\nSELECT 1",
+            "/* aa * / SELECT * FROM secret_table -- */ SELECT 1",
+        )
+        self.validate(
+            "-- comment */ DROP TABLE users --\nSELECT 1",
+            "/* comment * / DROP TABLE users -- */ SELECT 1",
+        )
+        # Nested block comments have their inner markers escaped to prevent misparse on re-emit
+        self.validate(
+            "SELECT c /* c1 /* c2 */ c3 */",
+            "SELECT c /* c1 / * c2 * / c3 */",
+        )
+        self.validate(
+            "SELECT c /* c1 /* c2 /* c3 */ */ */",
+            "SELECT c /* c1 / * c2 / * c3 * / * / */",
         )
 
     def test_types(self):
@@ -653,7 +747,7 @@ ORDER BY
             transpile("x::z", read="clickhouse")
 
     def test_not_range(self):
-        self.validate("a NOT LIKE b", "NOT a LIKE b")
+        self.validate("a NOT LIKE b", "a NOT LIKE b")
         self.validate("a NOT BETWEEN b AND c", "NOT a BETWEEN b AND c")
         self.validate("a NOT IN (1, 2)", "NOT a IN (1, 2)")
         self.validate("a IS NOT NULL", "NOT a IS NULL")
@@ -963,17 +1057,36 @@ ORDER BY
             transpile("SELECT '1\n2'", pretty=True, unsupported_level=ErrorLevel.IGNORE)[0],
             "SELECT\n  '1\n2'",
         )
+        self.assertEqual(transpile('SELECT "1\n2"', pretty=True)[0], 'SELECT\n  "1\n2"')
+        self.assertEqual(
+            transpile('SELECT "Product\n(Foo, Bar)" AS x FROM t', pretty=True)[0],
+            'SELECT\n  "Product\n(Foo, Bar)" AS x\nFROM t',
+        )
+
+    def test_sql_security(self):
+        sqlglot_sql = "CREATE VIEW v SQL SECURITY INVOKER AS SELECT 1"
+
+        for dialect, sql in [
+            ("clickhouse", "CREATE VIEW v SQL SECURITY INVOKER AS SELECT 1"),
+            ("trino", "CREATE VIEW v SECURITY INVOKER AS SELECT 1"),
+            ("presto", "CREATE VIEW v SECURITY INVOKER AS SELECT 1"),
+            ("starrocks", "CREATE VIEW v SECURITY INVOKER AS SELECT 1"),
+            ("mysql", "CREATE SQL SECURITY INVOKER VIEW v AS SELECT 1"),
+        ]:
+            with self.subTest(dialect):
+                self.validate(sql, read=dialect, identity=False, target=sqlglot_sql)
+                self.validate(sql, write=dialect, identity=False, target=sql)
 
     @mock.patch("sqlglot.parser.logger")
     def test_error_level(self, logger):
         invalid = "x + 1. ("
         expected_messages = [
-            "Required keyword: 'expressions' missing for <class 'sqlglot.expressions.Aliases'>. Line 1, Col: 8.\n  x + 1. \033[4m(\033[0m",
+            "Required keyword: 'expressions' missing for <class 'sqlglot.expressions.core.Aliases'>. Line 1, Col: 8.\n  x + 1. \033[4m(\033[0m",
             "Expecting ). Line 1, Col: 8.\n  x + 1. \033[4m(\033[0m",
         ]
         expected_errors = [
             {
-                "description": "Required keyword: 'expressions' missing for <class 'sqlglot.expressions.Aliases'>",
+                "description": "Required keyword: 'expressions' missing for <class 'sqlglot.expressions.core.Aliases'>",
                 "line": 1,
                 "col": 8,
                 "start_context": "x + 1. ",
@@ -1010,14 +1123,14 @@ ORDER BY
 
         more_than_max_errors = "(((("
         expected_messages = (
-            "Required keyword: 'this' missing for <class 'sqlglot.expressions.Paren'>. Line 1, Col: 4.\n  (((\033[4m(\033[0m\n\n"
+            "Required keyword: 'this' missing for <class 'sqlglot.expressions.core.Paren'>. Line 1, Col: 4.\n  (((\033[4m(\033[0m\n\n"
             "Expecting ). Line 1, Col: 4.\n  (((\033[4m(\033[0m\n\n"
             "Expecting ). Line 1, Col: 4.\n  (((\033[4m(\033[0m\n\n"
             "... and 2 more"
         )
         expected_errors = [
             {
-                "description": "Required keyword: 'this' missing for <class 'sqlglot.expressions.Paren'>",
+                "description": "Required keyword: 'this' missing for <class 'sqlglot.expressions.core.Paren'>",
                 "line": 1,
                 "col": 4,
                 "start_context": "(((",

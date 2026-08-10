@@ -8,6 +8,7 @@ class TestSQLite(Validator):
     dialect = "sqlite"
 
     def test_sqlite(self):
+        self.validate_identity("WITH xyz(x) AS (SELECT 1) SELECT x FROM xyz")
         self.validate_identity("SELECT * FROM t AS t INDEXED BY s.i")
         self.validate_identity("SELECT * FROM t INDEXED BY s.i")
         self.validate_identity("SELECT * FROM t INDEXED BY i")
@@ -55,11 +56,53 @@ class TestSQLite(Validator):
             "ALTER TABLE t RENAME a TO b",
             "ALTER TABLE t RENAME COLUMN a TO b",
         )
+        self.validate_identity("ALTER TABLE t1 RENAME TO t2")
 
         self.validate_all("SELECT LIKE(y, x)", write={"sqlite": "SELECT x LIKE y"})
         self.validate_all("SELECT GLOB('*y*', 'xyz')", write={"sqlite": "SELECT 'xyz' GLOB '*y*'"})
         self.validate_all(
             "SELECT LIKE('%y%', 'xyz', '')", write={"sqlite": "SELECT 'xyz' LIKE '%y%' ESCAPE ''"}
+        )
+        self.validate_all(
+            "SELECT MIN(a, b) FROM t",
+            read={
+                "postgres": "SELECT LEAST(a, b) FROM t",
+                "sqlite": "SELECT MIN(a, b) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT MAX(a, b) FROM t",
+            read={
+                "postgres": "SELECT GREATEST(a, b) FROM t",
+                "sqlite": "SELECT MAX(a, b) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT JSON_GROUP_ARRAY(name) FROM t",
+            read={
+                "postgres": "SELECT JSON_AGG(name) FROM t",
+                "sqlite": "SELECT JSON_GROUP_ARRAY(name) FROM t",
+            },
+            write={
+                "postgres": "SELECT JSON_AGG(name) FROM t",
+            },
+        )
+        self.validate_all(
+            "SELECT JSON_GROUP_OBJECT(name, value) FROM t",
+            read={
+                "postgres": "SELECT JSON_OBJECT_AGG(name, value) FROM t",
+                "sqlite": "SELECT JSON_GROUP_OBJECT(name, value) FROM t",
+            },
+            write={
+                "postgres": "SELECT JSON_OBJECT_AGG(name, value) FROM t",
+            },
+        )
+        self.validate_all(
+            "INSERT OR IGNORE INTO foo (x, y) VALUES (1, 2)",
+            read={
+                "mysql": "INSERT IGNORE INTO foo (x, y) VALUES (1, 2)",
+                "sqlite": "INSERT OR IGNORE INTO foo (x, y) VALUES (1, 2)",
+            },
         )
         self.validate_all(
             "CURRENT_DATE",
@@ -113,6 +156,7 @@ class TestSQLite(Validator):
             },
         )
         self.validate_all("x", read={"snowflake": "LEAST(x)"})
+        self.validate_all("x", read={"postgres": "GREATEST(x)"})
         self.validate_all("MIN(x)", read={"snowflake": "MIN(x)"}, write={"snowflake": "MIN(x)"})
         self.validate_all(
             "MIN(x, y, z)",
@@ -251,8 +295,39 @@ class TestSQLite(Validator):
         self.validate_identity("INSERT OR IGNORE INTO foo (x, y) VALUES (1, 2)")
         self.validate_identity("INSERT OR REPLACE INTO foo (x, y) VALUES (1, 2)")
         self.validate_identity("INSERT OR ROLLBACK INTO foo (x, y) VALUES (1, 2)")
+        self.validate_identity(
+            "INSERT INTO tbl (x, y) SELECT 1, 'a' WHERE TRUE ON CONFLICT(x, LOWER(y)) DO UPDATE SET y = excluded.y"
+        )
+        self.validate_identity(
+            "INSERT INTO tbl (x, y) VALUES (1, 'a') ON CONFLICT(x, LOWER(y) COLLATE NOCASE ASC, y DESC) DO NOTHING"
+        )
+        self.validate_identity(
+            "INSERT INTO tbl (x, y) VALUES (1, 'a') ON CONFLICT(CASE WHEN x > 0 THEN x ELSE -x END) DO NOTHING"
+        )
+        self.validate_identity(
+            "INSERT INTO tbl (x, y) VALUES (1, 'a') ON CONFLICT(x) WHERE x > 0 DO UPDATE SET y = excluded.y"
+        )
         self.validate_identity("CREATE TABLE foo (id INTEGER PRIMARY KEY ASC)")
         self.validate_identity("CREATE TEMPORARY TABLE foo (id INTEGER)")
+        self.validate_identity("CREATE VIRTUAL TABLE docs USING fts5(title, content)")
+        self.validate_identity("CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(title, content)")
+        self.validate_identity("CREATE VIRTUAL TABLE main.docs USING fts5(title, content)")
+        self.validate_identity(
+            "CREATE VIRTUAL TABLE demo_index USING rtree(id, minX, maxX, minY, maxY)"
+        )
+        self.validate_identity("CREATE VIRTUAL TABLE t USING module_name")
+        self.validate_identity("PRAGMA table_info")
+        self.validate_identity("PRAGMA schema")
+        self.validate_identity("PRAGMA full_column_names = on")
+        self.validate_identity("PRAGMA full_column_names = off")
+        self.validate_identity("PRAGMA cache_size = 2000")
+        self.validate_identity("PRAGMA foo = -2000")
+        self.validate_identity("PRAGMA foo(-2000)", "PRAGMA foo = -2000")
+        self.validate_identity("PRAGMA encoding = 'UTF-16'")
+        self.validate_identity("PRAGMA main.cache_size")
+        self.validate_identity("PRAGMA main.cache_size = 2000")
+        self.validate_identity("PRAGMA cache_size(2000)", "PRAGMA cache_size = 2000")
+        self.validate_identity("PRAGMA main.cache_size(2000)", "PRAGMA main.cache_size = 2000")
 
         self.validate_all(
             """
@@ -290,6 +365,18 @@ class TestSQLite(Validator):
                 "postgres": "CREATE TABLE z (a INT GENERATED BY DEFAULT AS IDENTITY NOT NULL UNIQUE PRIMARY KEY)",
             },
         )
+        for constraint in ("PRIMARY KEY AUTO_INCREMENT", "AUTO_INCREMENT PRIMARY KEY"):
+            with self.subTest(constraint):
+                self.validate_all(
+                    "CREATE TABLE z (a INTEGER PRIMARY KEY AUTOINCREMENT)",
+                    read={
+                        "mysql": f"CREATE TABLE z (a INT {constraint})",
+                    },
+                    write={
+                        "sqlite": "CREATE TABLE z (a INTEGER PRIMARY KEY AUTOINCREMENT)",
+                        "mysql": "CREATE TABLE z (a INT PRIMARY KEY AUTO_INCREMENT)",
+                    },
+                )
         self.validate_all(
             """CREATE TABLE "x" ("Name" NVARCHAR(200) NOT NULL)""",
             write={

@@ -35,7 +35,7 @@ TRIGGER = "/integration-test"
 SUPPORTED_DIALECTS = ["duckdb", "bigquery", "snowflake"]
 
 
-def get_dialects_from_manual_trigger(trigger: str) -> t.Set[str]:
+def get_dialects_from_manual_trigger(trigger: str) -> set[str]:
     """
     Takes a trigger string and parses out the supported dialects
 
@@ -53,7 +53,7 @@ def get_dialects_from_manual_trigger(trigger: str) -> t.Set[str]:
 
     print(f"Parsing trigger args: {trigger_parts}")
 
-    dialects: t.List[str] = []
+    dialects: list[str] = []
     for part in trigger_parts:
         # try to parse key=value pairs
         maybe_kv = part.split("=", maxsplit=1)
@@ -65,7 +65,7 @@ def get_dialects_from_manual_trigger(trigger: str) -> t.Set[str]:
     return {d for d in dialects if d in SUPPORTED_DIALECTS}
 
 
-def get_dialects_from_git(base_ref: str, current_ref: str) -> t.Set[str]:
+def get_dialects_from_git(base_ref: str, current_ref: str) -> set[str]:
     """
     Takes two git refs and runs `git diff --name-only <base_ref> <current_ref>`
 
@@ -101,16 +101,16 @@ if __name__ == "__main__":
     github_output = os.environ.get("GITHUB_OUTPUT")
 
     if not os.environ.get("GITHUB_ACTIONS") or not github_event_path or not github_output:
-        print(f"This script needs to run within GitHub Actions")
+        print("This script needs to run within GitHub Actions")
         sys.exit(1)
 
     github_event_path = Path(github_event_path)
     github_output = Path(github_output)
 
     with github_event_path.open("r") as f:
-        event: t.Dict[str, t.Any] = json.load(f)
+        event: dict[str, t.Any] = json.load(f)
 
-    print(f"Handling event: \n" + json.dumps(event, indent=2))
+    print("Handling event: \n" + json.dumps(event, indent=2))
 
     # for pull_request events, the body is located at github.event.pull_request.body
     pr_description: str = event.get("pull_request", {}).get("body") or ""
@@ -126,7 +126,7 @@ if __name__ == "__main__":
         should_run = True
     else:
         # otherwise, do a git diff and inspect the changed files
-        print(f"Explicit trigger line not detected; performing git diff")
+        print("Explicit trigger line not detected; performing git diff")
         pull_request_base_ref = event.get("pull_request", {}).get("base", {}).get("sha")
         if not pull_request_base_ref:
             raise ValueError("Unable to determine base ref")
@@ -147,20 +147,19 @@ if __name__ == "__main__":
         dialects_str = (
             f"the following dialects: {', '.join(dialects)}"
             if dialects
-            else f"all supported dialects"
+            else "all supported dialects"
         )
         print(f"Conclusion: should run tests for {dialects_str}")
     else:
-        print(f"Conclusion: No tests to run")
+        print("Conclusion: No dialect-specific tests to run, but SQLGlot tests will still run")
 
-    # write output variables
-    lines = []
-    if should_run:
-        lines.append("skip=false")
-        if dialects:
-            lines.append(f"dialects={','.join(dialects)}")
-    else:
-        lines.append("skip=true")
+    # Always dispatch so that run-sqlglot-tests (tests/sqlglot/) runs on every PR.
+    # When no dialects are detected, pass "none" so the integration test matrix is empty.
+    lines = ["skip=false"]
+    if should_run and dialects:
+        lines.append(f"dialects={','.join(dialects)}")
+    elif not should_run:
+        lines.append("dialects=none")
 
     with github_output.open("a") as f:
         f.writelines(f"{l}\n" for l in lines)

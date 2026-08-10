@@ -1,4 +1,5 @@
 from sqlglot import exp, ParseError, parse_one, transpile
+from sqlglot.optimizer.annotate_types import annotate_types
 from tests.dialects.test_dialect import Validator
 
 
@@ -31,7 +32,7 @@ class TestRedshift(Validator):
             """SELECT JSON_EXTRACT_PATH_TEXT('{ "farm": {"barn": { "color": "red", "feed stocked": true }}}', 'farm', 'barn', 'color')""",
             write={
                 "bigquery": """SELECT JSON_EXTRACT_SCALAR('{ "farm": {"barn": { "color": "red", "feed stocked": true }}}', '$.farm.barn.color')""",
-                "databricks": """SELECT '{ "farm": {"barn": { "color": "red", "feed stocked": true }}}':farm.barn.color""",
+                "databricks": """SELECT GET_JSON_OBJECT('{ "farm": {"barn": { "color": "red", "feed stocked": true }}}', '$.farm.barn.color')""",
                 "duckdb": """SELECT '{ "farm": {"barn": { "color": "red", "feed stocked": true }}}' ->> '$.farm.barn.color'""",
                 "postgres": """SELECT JSON_EXTRACT_PATH_TEXT('{ "farm": {"barn": { "color": "red", "feed stocked": true }}}', 'farm', 'barn', 'color')""",
                 "presto": """SELECT JSON_EXTRACT_SCALAR('{ "farm": {"barn": { "color": "red", "feed stocked": true }}}', '$.farm.barn.color')""",
@@ -330,6 +331,7 @@ class TestRedshift(Validator):
         )
 
         self.validate_identity("SELECT VERSION()")
+        self.validate_identity("SELECT TEXTLEN('hello world')", "SELECT LENGTH('hello world')")
 
     def test_identity(self):
         self.validate_identity("SELECT GETBIT(FROM_HEX('4d'), 2)")
@@ -342,13 +344,27 @@ class TestRedshift(Validator):
         self.validate_identity("SELECT DATEADD(DAY, 1, 'today')")
         self.validate_identity("SELECT * FROM #x")
         self.validate_identity("SELECT INTERVAL '5 DAY'")
+        self.validate_identity("SELECT date_col - INTERVAL '30' FROM t")
+        self.validate_identity("SELECT date_col - INTERVAL '1' AS one_second_later")
+        self.validate_identity(
+            "SELECT date_col - INTERVAL '30' DAY FROM t",
+            "SELECT date_col - INTERVAL '30 DAY' FROM t",
+        )
+        self.validate_identity(
+            "SELECT date_col - INTERVAL '1' HOUR AS one_hour_later",
+            "SELECT date_col - INTERVAL '1 HOUR' AS one_hour_later",
+        )
         self.validate_identity("foo$")
         self.validate_identity("CAST('bla' AS SUPER)")
         self.validate_identity("CREATE TABLE real1 (realcol REAL)")
         self.validate_identity("CAST('foo' AS HLLSKETCH)")
         self.validate_identity("'abc' SIMILAR TO '(b|c)%'")
+        self.validate_identity("'%' SIMILAR TO '^%' ESCAPE '^'")
         self.validate_identity("CREATE TABLE datetable (start_date DATE, end_date DATE)")
         self.validate_identity("SELECT APPROXIMATE AS y")
+        self.validate_identity(
+            "SELECT APPROXIMATE PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY totalprice)"
+        )
         self.validate_identity("CREATE TABLE t (c BIGINT IDENTITY(0, 1))")
         self.validate_identity(
             "COPY test_staging_tbl FROM 's3://your/bucket/prefix/here' IAM_ROLE default FORMAT AS AVRO 'auto'"
@@ -759,6 +775,26 @@ FROM (
                 "redshift": "SELECT * FROM t LIMIT 1",
                 "postgres": "SELECT * FROM t FETCH FIRST 1 ROWS ONLY",
             },
+        )
+
+    def test_to_timestamp(self):
+        # Redshift's TO_TIMESTAMP returns TIMESTAMPTZ
+        # https://docs.aws.amazon.com/redshift/latest/dg/r_TO_TIMESTAMP.html
+        expr = annotate_types(
+            parse_one("SELECT TO_TIMESTAMP('2023-01-01', 'YYYY-MM-DD')", dialect="redshift"),
+            dialect="redshift",
+        )
+        self.assertEqual(expr.expressions[0].type.this, exp.DataType.Type.TIMESTAMPTZ)
+
+        self.validate_identity("SELECT LAG(x) IGNORE NULLS OVER (PARTITION BY y ORDER BY z)")
+        self.validate_identity("SELECT LAG(x) RESPECT NULLS OVER (PARTITION BY y ORDER BY z)")
+        self.validate_identity(
+            "SELECT LAG(x IGNORE NULLS) OVER (PARTITION BY y ORDER BY z)",
+            "SELECT LAG(x) IGNORE NULLS OVER (PARTITION BY y ORDER BY z)",
+        )
+        self.validate_identity(
+            "SELECT LAG(x RESPECT NULLS) OVER (PARTITION BY y ORDER BY z)",
+            "SELECT LAG(x) RESPECT NULLS OVER (PARTITION BY y ORDER BY z)",
         )
 
     def test_regexp_extract(self):

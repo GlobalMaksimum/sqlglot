@@ -16,6 +16,11 @@ from sqlglot.dialects import BigQuery, Hive, Snowflake, Spark2
 from sqlglot.dialects.duckdb import WS_CONTROL_CHARS_TO_DUCK
 from sqlglot.generator import logger as generator_logger
 from sqlglot.parser import logger as parser_logger
+from sqlglot.parsers.snowflake import SnowflakeParser
+from collections.abc import Iterable
+import sqlglot.parsers.base as _base_module
+
+_PARSER_IS_COMPILED = getattr(_base_module, "__file__", "").endswith(".so")
 
 
 class Validator(unittest.TestCase):
@@ -26,11 +31,11 @@ class Validator(unittest.TestCase):
 
     def assert_duckdb_sql(
         self,
-        expression: exp.Expression,
+        expression: exp.Expr,
         *,
-        includes: t.Optional[t.Iterable[str]] = None,
-        excludes: t.Optional[t.Iterable[str]] = None,
-        chr_chars: t.Optional[t.Iterable[str]] = None,
+        includes: t.Optional[Iterable[str]] = None,
+        excludes: t.Optional[Iterable[str]] = None,
+        chr_chars: t.Optional[Iterable[str]] = None,
     ) -> str:
         duckdb_sql = expression.sql("duckdb")
 
@@ -295,6 +300,12 @@ class TestDialect(Validator):
             "CAST((1, 2, 3, 4) AS STRUCT<a: TINYINT, b: SMALLINT, c: INT, d: BIGINT>)",
             write={
                 "clickhouse": "CAST((1, 2, 3, 4) AS Tuple(a Nullable(Int8), b Nullable(Int16), c Nullable(Int32), d Nullable(Int64)))",
+            },
+        )
+        self.validate_all(
+            "SELECT ARRAY_DISTINCT(x)",
+            write={
+                "clickhouse": "SELECT arrayDistinct(x)",
             },
         )
         self.validate_all(
@@ -940,7 +951,7 @@ class TestDialect(Validator):
             write={
                 "duckdb": "SUBSTRING(CAST(x AS TEXT), 1, 10)",
                 "hive": "SUBSTRING(CAST(x AS STRING), 1, 10)",
-                "presto": "SUBSTRING(CAST(x AS VARCHAR), 1, 10)",
+                "presto": "SUBSTR(CAST(x AS VARCHAR), 1, 10)",
                 "doris": "SUBSTRING(CAST(x AS STRING), 1, 10)",
             },
         )
@@ -988,6 +999,7 @@ class TestDialect(Validator):
                 "presto": "FROM_UNIXTIME(x)",
                 "starrocks": "FROM_UNIXTIME(x)",
                 "doris": "FROM_UNIXTIME(x)",
+                "exasol": "FROM_POSIX_TIME(x)",
             },
         )
         self.validate_all(
@@ -1387,7 +1399,6 @@ class TestDialect(Validator):
             "REDUCE(x, 0, (acc, x) -> acc + x, acc -> acc)",
             write={
                 "trino": "REDUCE(x, 0, (acc, x) -> acc + x, acc -> acc)",
-                "duckdb": "REDUCE(x, 0, (acc, x) -> acc + x, acc -> acc)",
                 "hive": "REDUCE(x, 0, (acc, x) -> acc + x, acc -> acc)",
                 "spark": "AGGREGATE(x, 0, (acc, x) -> acc + x, acc -> acc)",
                 "presto": "REDUCE(x, 0, (acc, x) -> acc + x, acc -> acc)",
@@ -1405,6 +1416,7 @@ class TestDialect(Validator):
                 "trino": "ARRAY_INTERSECT(x, y)",
                 "snowflake": "ARRAY_INTERSECTION(x, y)",
                 "starrocks": "ARRAY_INTERSECT(x, y)",
+                "duckdb": "ARRAY_INTERSECT(x, y)",
             },
             write={
                 "hive": "ARRAY_INTERSECT(x, y)",
@@ -1415,6 +1427,7 @@ class TestDialect(Validator):
                 "trino": "ARRAY_INTERSECT(x, y)",
                 "snowflake": "ARRAY_INTERSECTION(x, y)",
                 "starrocks": "ARRAY_INTERSECT(x, y)",
+                "duckdb": "ARRAY_INTERSECT(x, y)",
             },
         )
 
@@ -1465,7 +1478,7 @@ class TestDialect(Validator):
         self.validate_all(
             "SORT_ARRAY(x)",
             write={
-                "duckdb": "ARRAY_SORT(x)",
+                "duckdb": "LIST_SORT(x)",
                 "hive": "SORT_ARRAY(x)",
                 "presto": "ARRAY_SORT(x)",
                 "snowflake": "ARRAY_SORT(x)",
@@ -1741,7 +1754,6 @@ class TestDialect(Validator):
             },
         )
 
-        # Test ARRAY_EXCEPT transpilation across dialects
         self.validate_all(
             "SELECT ARRAY_EXCEPT(ARRAY(1, 2, 3), ARRAY(2))",
             read={
@@ -1755,7 +1767,27 @@ class TestDialect(Validator):
                 "trino": "SELECT ARRAY_EXCEPT(ARRAY[1, 2, 3], ARRAY[2])",
                 "presto": "SELECT ARRAY_EXCEPT(ARRAY[1, 2, 3], ARRAY[2])",
                 "athena": "SELECT ARRAY_EXCEPT(ARRAY[1, 2, 3], ARRAY[2])",
-                "duckdb": "SELECT CASE WHEN [1, 2, 3] IS NULL OR [2] IS NULL THEN NULL ELSE LIST_TRANSFORM(LIST_FILTER(LIST_ZIP([1, 2, 3], GENERATE_SERIES(1, LENGTH([1, 2, 3]))), pair -> (LENGTH(LIST_FILTER([1, 2, 3][1:pair[2]], e -> e IS NOT DISTINCT FROM pair[1])) > LENGTH(LIST_FILTER([2], e -> e IS NOT DISTINCT FROM pair[1])))), pair -> pair[1]) END",
+                "duckdb": "SELECT CASE WHEN [1, 2, 3] IS NULL OR [2] IS NULL THEN NULL ELSE LIST_FILTER(LIST_DISTINCT([1, 2, 3]), e -> LENGTH(LIST_FILTER([2], x -> x IS NOT DISTINCT FROM e)) = 0) END",
+            },
+        )
+
+        self.validate_all(
+            "SELECT ARRAY_POSITION(ARRAY(1, 2, 3), 2)",
+            read={
+                "spark": "SELECT array_position(array(1, 2, 3), 2)",
+                "databricks": "SELECT array_position(array(1, 2, 3), 2)",
+                "trino": "SELECT array_position(array[1, 2, 3], 2)",
+                "presto": "SELECT array_position(array[1, 2, 3], 2)",
+                "athena": "SELECT array_position(array[1, 2, 3], 2)",
+            },
+            write={
+                "snowflake": "SELECT ARRAY_POSITION(2, [1, 2, 3])",
+                "spark": "SELECT ARRAY_POSITION(ARRAY(1, 2, 3), 2)",
+                "databricks": "SELECT ARRAY_POSITION(ARRAY(1, 2, 3), 2)",
+                "trino": "SELECT ARRAY_POSITION(ARRAY[1, 2, 3], 2)",
+                "presto": "SELECT ARRAY_POSITION(ARRAY[1, 2, 3], 2)",
+                "athena": "SELECT ARRAY_POSITION(ARRAY[1, 2, 3], 2)",
+                "duckdb": "SELECT ARRAY_POSITION([1, 2, 3], 2)",
             },
         )
 
@@ -2009,7 +2041,7 @@ class TestDialect(Validator):
             },
         )
 
-        # Unnest multiple Expression into respective mapped alias
+        # Unnest multiple Expr into respective mapped alias
         self.validate_all(
             "SELECT numbers, animals, n, a FROM (SELECT ARRAY(2, 5) AS numbers, ARRAY('dog', 'cat', 'bird') AS animals UNION ALL SELECT ARRAY(7, 8, 9), ARRAY('cow', 'pig')) AS x CROSS JOIN UNNEST(numbers, animals) AS t(n, a)",
             write={
@@ -2371,7 +2403,7 @@ class TestDialect(Validator):
         self.validate_all(
             "STR_POSITION(haystack, needle, position)",
             write={
-                "athena": "IF(STRPOS(SUBSTRING(haystack, position), needle) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle) + position - 1)",
+                "athena": "IF(STRPOS(SUBSTR(haystack, position), needle) = 0, 0, STRPOS(SUBSTR(haystack, position), needle) + position - 1)",
                 "bigquery": "INSTR(haystack, needle, position)",
                 "clickhouse": "POSITION(haystack, needle, position)",
                 "databricks": "LOCATE(needle, haystack, position)",
@@ -2383,7 +2415,7 @@ class TestDialect(Validator):
                 "mysql": "LOCATE(needle, haystack, position)",
                 "oracle": "INSTR(haystack, needle, position)",
                 "postgres": "CASE WHEN POSITION(needle IN SUBSTRING(haystack FROM position)) = 0 THEN 0 ELSE POSITION(needle IN SUBSTRING(haystack FROM position)) + position - 1 END",
-                "presto": "IF(STRPOS(SUBSTRING(haystack, position), needle) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle) + position - 1)",
+                "presto": "IF(STRPOS(SUBSTR(haystack, position), needle) = 0, 0, STRPOS(SUBSTR(haystack, position), needle) + position - 1)",
                 "redshift": "CASE WHEN POSITION(needle IN SUBSTRING(haystack FROM position)) = 0 THEN 0 ELSE POSITION(needle IN SUBSTRING(haystack FROM position)) + position - 1 END",
                 "risingwave": "CASE WHEN POSITION(needle IN SUBSTRING(haystack FROM position)) = 0 THEN 0 ELSE POSITION(needle IN SUBSTRING(haystack FROM position)) + position - 1 END",
                 "snowflake": "CHARINDEX(needle, haystack, position)",
@@ -2392,7 +2424,7 @@ class TestDialect(Validator):
                 "sqlite": "IIF(INSTR(SUBSTRING(haystack, position), needle) = 0, 0, INSTR(SUBSTRING(haystack, position), needle) + position - 1)",
                 "tableau": "IF FIND(SUBSTRING(haystack, position), needle) = 0 THEN 0 ELSE FIND(SUBSTRING(haystack, position), needle) + position - 1 END",
                 "teradata": "INSTR(haystack, needle, position)",
-                "trino": "IF(STRPOS(SUBSTRING(haystack, position), needle) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle) + position - 1)",
+                "trino": "IF(STRPOS(SUBSTR(haystack, position), needle) = 0, 0, STRPOS(SUBSTR(haystack, position), needle) + position - 1)",
                 "tsql": "CHARINDEX(needle, haystack, position)",
             },
         )
@@ -2406,21 +2438,20 @@ class TestDialect(Validator):
             write={
                 "bigquery": "INSTR(haystack, needle, position, occurrence)",
                 "oracle": "INSTR(haystack, needle, position, occurrence)",
-                "presto": "IF(STRPOS(SUBSTRING(haystack, position), needle, occurrence) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle, occurrence) + position - 1)",
+                "presto": "IF(STRPOS(SUBSTR(haystack, position), needle, occurrence) = 0, 0, STRPOS(SUBSTR(haystack, position), needle, occurrence) + position - 1)",
                 "tableau": "IF FINDNTH(SUBSTRING(haystack, position), needle, occurrence) = 0 THEN 0 ELSE FINDNTH(SUBSTRING(haystack, position), needle, occurrence) + position - 1 END",
                 "teradata": "INSTR(haystack, needle, position, occurrence)",
-                "trino": "IF(STRPOS(SUBSTRING(haystack, position), needle, occurrence) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle, occurrence) + position - 1)",
+                "trino": "IF(STRPOS(SUBSTR(haystack, position), needle, occurrence) = 0, 0, STRPOS(SUBSTR(haystack, position), needle, occurrence) + position - 1)",
             },
         )
         self.validate_all(
             "CONCAT_WS('-', 'a', 'b')",
             write={
                 "clickhouse": "CONCAT_WS('-', 'a', 'b')",
-                "duckdb": "CONCAT_WS('-', 'a', 'b')",
-                "presto": "CONCAT_WS('-', CAST('a' AS VARCHAR), CAST('b' AS VARCHAR))",
-                "hive": "CONCAT_WS('-', 'a', 'b')",
-                "spark": "CONCAT_WS('-', 'a', 'b')",
-                "trino": "CONCAT_WS('-', CAST('a' AS VARCHAR), CAST('b' AS VARCHAR))",
+                "duckdb": "CASE WHEN '-' IS NULL OR 'a' IS NULL OR 'b' IS NULL THEN NULL ELSE CONCAT_WS('-', 'a', 'b') END",
+                "hive": "CASE WHEN '-' IS NULL OR 'a' IS NULL OR 'b' IS NULL THEN NULL ELSE CONCAT_WS('-', 'a', 'b') END",
+                "spark": "CASE WHEN '-' IS NULL OR 'a' IS NULL OR 'b' IS NULL THEN NULL ELSE CONCAT_WS('-', 'a', 'b') END",
+                "trino": "CASE WHEN '-' IS NULL OR 'a' IS NULL OR 'b' IS NULL THEN NULL ELSE CONCAT_WS('-', CAST('a' AS VARCHAR), CAST('b' AS VARCHAR)) END",
             },
         )
 
@@ -2428,11 +2459,10 @@ class TestDialect(Validator):
             "CONCAT_WS('-', x)",
             write={
                 "clickhouse": "CONCAT_WS('-', x)",
-                "duckdb": "CONCAT_WS('-', x)",
-                "hive": "CONCAT_WS('-', x)",
-                "presto": "CONCAT_WS('-', CAST(x AS VARCHAR))",
-                "spark": "CONCAT_WS('-', x)",
-                "trino": "CONCAT_WS('-', CAST(x AS VARCHAR))",
+                "duckdb": "CASE WHEN '-' IS NULL OR x IS NULL THEN NULL ELSE CONCAT_WS('-', x) END",
+                "hive": "CASE WHEN '-' IS NULL OR x IS NULL THEN NULL ELSE CONCAT_WS('-', x) END",
+                "spark": "CASE WHEN '-' IS NULL OR x IS NULL THEN NULL ELSE CONCAT_WS('-', x) END",
+                "trino": "CASE WHEN '-' IS NULL OR x IS NULL THEN NULL ELSE CONCAT_WS('-', CAST(x AS VARCHAR)) END",
             },
         )
         self.validate_all(
@@ -2717,6 +2747,18 @@ class TestDialect(Validator):
         )
 
     def test_limit(self):
+        self.validate_identity("WITH t AS (SELECT 1 AS all) SELECT 1 FROM t LIMIT all")
+        self.validate_all(
+            "WITH t AS (SELECT 1 AS all) SELECT 1 FROM t",
+            read={
+                "databricks": "WITH t AS (SELECT 1 AS all) SELECT 1 FROM t LIMIT all",
+                "duckdb": "WITH t AS (SELECT 1 AS all) SELECT 1 FROM t LIMIT all",
+                "presto": "WITH t AS (SELECT 1 AS all) SELECT 1 FROM t LIMIT all",
+                "postgres": "WITH t AS (SELECT 1 AS all) SELECT 1 FROM t LIMIT all",
+                "spark": "WITH t AS (SELECT 1 AS all) SELECT 1 FROM t LIMIT all",
+            },
+        )
+
         self.validate_all(
             "SELECT * FROM data LIMIT 10, 20",
             write={"sqlite": "SELECT * FROM data LIMIT 20 OFFSET 10"},
@@ -3609,10 +3651,11 @@ FROM subquery2""",
                 "databricks": "SELECT * FROM EXPLODE(SEQUENCE(CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE), INTERVAL '1' WEEK))",
                 "duckdb": "SELECT * FROM UNNEST(CAST(GENERATE_SERIES(CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE), INTERVAL '1' WEEK) AS DATE[]))",
                 "mysql": "WITH RECURSIVE _generated_dates(date_value) AS (SELECT CAST('2020-01-01' AS DATE) AS date_value UNION ALL SELECT CAST(DATE_ADD(date_value, INTERVAL 1 WEEK) AS DATE) FROM _generated_dates WHERE CAST(DATE_ADD(date_value, INTERVAL 1 WEEK) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_value FROM _generated_dates) AS _generated_dates",
+                "starrocks": "WITH RECURSIVE _generated_dates(date_value) AS (SELECT CAST('2020-01-01' AS DATE) AS date_value UNION ALL SELECT CAST(DATE_ADD(date_value, INTERVAL 1 WEEK) AS DATE) FROM _generated_dates WHERE CAST(DATE_ADD(date_value, INTERVAL 1 WEEK) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_value FROM _generated_dates) AS _generated_dates",
                 "postgres": "SELECT * FROM (SELECT CAST(value AS DATE) FROM GENERATE_SERIES(CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE), INTERVAL '1 WEEK') AS _t(value)) AS _unnested_generate_series",
                 "presto": "SELECT * FROM UNNEST(SEQUENCE(CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE), (1 * INTERVAL '7' DAY)))",
                 "redshift": "WITH RECURSIVE _generated_dates(date_value) AS (SELECT CAST('2020-01-01' AS DATE) AS date_value UNION ALL SELECT CAST(DATEADD(WEEK, 1, date_value) AS DATE) FROM _generated_dates WHERE CAST(DATEADD(WEEK, 1, date_value) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_value FROM _generated_dates) AS _generated_dates",
-                "snowflake": "SELECT * FROM (SELECT DATEADD(WEEK, CAST(value AS INT), CAST('2020-01-01' AS DATE)) AS value FROM TABLE(FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, (DATEDIFF(WEEK, CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE)) + 1 - 1) + 1))) AS _t0(seq, key, path, index, value, this))",
+                "snowflake": "SELECT * FROM (SELECT DATEADD(WEEK, CAST(value AS INT), CAST('2020-01-01' AS DATE)) AS value FROM TABLE(FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, DATEDIFF(WEEK, CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE)) + 1))) AS _t0(seq, key, path, index, value, this))",
                 "spark": "SELECT * FROM EXPLODE(SEQUENCE(CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE), INTERVAL '1' WEEK))",
                 "trino": "SELECT * FROM UNNEST(SEQUENCE(CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE), (1 * INTERVAL '7' DAY)))",
                 "tsql": "WITH _generated_dates(date_value) AS (SELECT CAST('2020-01-01' AS DATE) AS date_value UNION ALL SELECT CAST(DATEADD(WEEK, 1, date_value) AS DATE) FROM _generated_dates WHERE CAST(DATEADD(WEEK, 1, date_value) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_value AS date_value FROM _generated_dates) AS _generated_dates",
@@ -3639,7 +3682,7 @@ FROM subquery2""",
             write={
                 "mysql": "WITH RECURSIVE _generated_dates(date_week) AS (SELECT CAST('2020-01-01' AS DATE) AS date_week UNION ALL SELECT CAST(DATE_ADD(date_week, INTERVAL 1 WEEK) AS DATE) FROM _generated_dates WHERE CAST(DATE_ADD(date_week, INTERVAL 1 WEEK) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_week FROM _generated_dates) AS _generated_dates",
                 "redshift": "WITH RECURSIVE _generated_dates(date_week) AS (SELECT CAST('2020-01-01' AS DATE) AS date_week UNION ALL SELECT CAST(DATEADD(WEEK, 1, date_week) AS DATE) FROM _generated_dates WHERE CAST(DATEADD(WEEK, 1, date_week) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_week FROM _generated_dates) AS _generated_dates",
-                "snowflake": "SELECT * FROM (SELECT DATEADD(WEEK, CAST(date_week AS INT), CAST('2020-01-01' AS DATE)) AS date_week FROM TABLE(FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, (DATEDIFF(WEEK, CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE)) + 1 - 1) + 1))) AS _q(seq, key, path, index, date_week, this)) AS _q(date_week)",
+                "snowflake": "SELECT * FROM (SELECT DATEADD(WEEK, CAST(date_week AS INT), CAST('2020-01-01' AS DATE)) AS date_week FROM TABLE(FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, DATEDIFF(WEEK, CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE)) + 1))) AS _q(seq, key, path, index, date_week, this)) AS _q(date_week)",
                 "tsql": "WITH _generated_dates(date_week) AS (SELECT CAST('2020-01-01' AS DATE) AS date_week UNION ALL SELECT CAST(DATEADD(WEEK, 1, date_week) AS DATE) FROM _generated_dates WHERE CAST(DATEADD(WEEK, 1, date_week) AS DATE) <= CAST('2020-02-01' AS DATE)) SELECT * FROM (SELECT date_week AS date_week FROM _generated_dates) AS _generated_dates",
             },
         )
@@ -3647,7 +3690,7 @@ FROM subquery2""",
         self.validate_all(
             "SELECT ARRAY_LENGTH(GENERATE_DATE_ARRAY(DATE '2020-01-01', DATE '2020-02-01', INTERVAL 1 WEEK))",
             write={
-                "snowflake": "SELECT ARRAY_SIZE((SELECT ARRAY_AGG(*) FROM (SELECT DATEADD(WEEK, CAST(value AS INT), CAST('2020-01-01' AS DATE)) AS value FROM TABLE(FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, (DATEDIFF(WEEK, CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE)) + 1 - 1) + 1))) AS _t0(seq, key, path, index, value, this))))",
+                "snowflake": "SELECT ARRAY_SIZE((SELECT ARRAY_AGG(*) FROM (SELECT DATEADD(WEEK, CAST(value AS INT), CAST('2020-01-01' AS DATE)) AS value FROM TABLE(FLATTEN(INPUT => ARRAY_GENERATE_RANGE(0, DATEDIFF(WEEK, CAST('2020-01-01' AS DATE), CAST('2020-02-01' AS DATE)) + 1))) AS _t0(seq, key, path, index, value, this))))",
             },
         )
 
@@ -3850,7 +3893,6 @@ FROM subquery2""",
                 "trino": "UUID()",
                 "mysql": "UUID()",
                 "postgres": "GEN_RANDOM_UUID()",
-                "snowflake": "UUID_STRING()",
                 "tsql": "NEWID()",
             },
             write={
@@ -4152,6 +4194,24 @@ FROM subquery2""",
                     write={
                         "": f"SELECT col ILIKE {quantifier} (x, y, z)",
                         "duckdb": f"SELECT (col ILIKE x {connector} col ILIKE y) {connector} col ILIKE z",
+                    },
+                )
+
+            with self.subTest(f"Testing NOT LIKE {quantifier}"):
+                self.validate_all(
+                    f"SELECT col NOT LIKE {quantifier} (x, y, z)",
+                    write={
+                        "": f"SELECT col NOT LIKE {quantifier} (x, y, z)",
+                        "duckdb": f"SELECT (col NOT LIKE x {connector} col NOT LIKE y) {connector} col NOT LIKE z",
+                    },
+                )
+
+            with self.subTest(f"Testing NOT ILIKE {quantifier}"):
+                self.validate_all(
+                    f"SELECT col NOT ILIKE {quantifier} (x, y, z)",
+                    write={
+                        "": f"SELECT col NOT ILIKE {quantifier} (x, y, z)",
+                        "duckdb": f"SELECT (col NOT ILIKE x {connector} col NOT ILIKE y) {connector} col NOT ILIKE z",
                     },
                 )
 
@@ -4990,9 +5050,9 @@ FROM subquery2""",
         def assert_custom_duckdb_sql(
             query: str,
             *,
-            includes: t.Optional[t.Iterable[str]] = None,
-            excludes: t.Optional[t.Iterable[str]] = None,
-            chr_chars: t.Optional[t.Iterable[str]] = None,
+            includes: t.Optional[Iterable[str]] = None,
+            excludes: t.Optional[Iterable[str]] = None,
+            chr_chars: t.Optional[Iterable[str]] = None,
         ) -> None:
             for dialect in ("bigquery", "snowflake"):
                 with self.subTest(f"DuckDB generation for {query} from {dialect}"):
@@ -5045,16 +5105,18 @@ FROM subquery2""",
                 for sign in ("", "-", "+"):
                     with self.subTest(f"Testing notation: {notation}, sign: {sign} for {dialect}"):
                         number = f"1_2{notation}{sign}1_0"
-                        self.assertEqual(parse_one(number, read=dialect).sql(dialect), number)
+                        expected = f"12{notation}{sign}10"
+                        self.assertEqual(parse_one(number, read=dialect).sql(dialect), expected)
 
                         number = f"12.3_4{notation}{sign}5_6_7"
-                        self.assertEqual(parse_one(number, read=dialect).sql(dialect), number)
+                        expected = f"12.34{notation}{sign}567"
+                        self.assertEqual(parse_one(number, read=dialect).sql(dialect), expected)
 
             with self.subTest(f"Testing underscore separated numbers for {dialect}"):
                 ast = parse_one("1_2_3_4_5", read=dialect)
                 self.assertTrue(ast.is_int)
                 self.assertEqual(ast.to_py(), 12345)
-                self.assertEqual(ast.sql(dialect), "1_2_3_4_5")
+                self.assertEqual(ast.sql(dialect), "12345")
 
     def test_localtime_and_localtimestamp(self):
         for func in ("LOCALTIME", "LOCALTIMESTAMP"):
@@ -5264,3 +5326,39 @@ FROM subquery2""",
             "SELECT ROW_NUMBER() OVER(PARTITION BY event_time + interval '00:00:01'::interval) AS foo FROM t",
             "SELECT ROW_NUMBER() OVER (PARTITION BY event_time + CAST(INTERVAL '00:00:01' AS INTERVAL)) AS foo FROM t",
         )
+
+    @unittest.skipIf(_PARSER_IS_COMPILED, "mypyc compiled parsers cannot be subclassed")
+    def test_patch_dialect_parser(self):
+        class CustomSnowflakeParser(SnowflakeParser):
+            FUNCTIONS = {
+                **SnowflakeParser.FUNCTIONS,
+                "MY_CUSTOM_FUNC": exp.Length.from_arg_list,
+            }
+
+        original = Snowflake.parser_class
+        try:
+            Snowflake.parser_class = CustomSnowflakeParser
+
+            result = parse_one("SELECT 1", dialect="snowflake")
+            self.assertIsInstance(result, exp.Select)
+
+            result = parse_one("SELECT MY_CUSTOM_FUNC(a)", dialect="snowflake")
+            self.assertIsInstance(result.find(exp.Length), exp.Length)
+        finally:
+            Snowflake.parser_class = original
+
+    @unittest.skipIf(_PARSER_IS_COMPILED, "mypyc compiled parsers cannot be subclassed")
+    def test_custom_dialect(self):
+        class MyDialect(Dialect):
+            class Parser(SnowflakeParser):
+                FUNCTIONS = {
+                    **SnowflakeParser.FUNCTIONS,
+                    "DOUBLE_IT": lambda args: exp.Mul(
+                        this=exp.Literal.number(2),
+                        expression=args[0] if args else exp.Null(),
+                    ),
+                }
+
+        result = parse_one("SELECT DOUBLE_IT(5)", dialect=MyDialect)
+        self.assertIsInstance(result.expressions[0], exp.Mul)
+        self.assertEqual(result.sql(), "SELECT 2 * 5")

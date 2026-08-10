@@ -1,4 +1,4 @@
-from sqlglot import exp
+from sqlglot import exp, transpile, UnsupportedError, ErrorLevel
 from tests.dialects.test_dialect import Validator
 
 
@@ -20,6 +20,21 @@ class TestExasol(Validator):
         self.validate_identity("SELECT CURRENT_USER", "SELECT CURRENT_USER")
         self.validate_identity("CURRENT_SCHEMA").assert_is(exp.CurrentSchema)
         self.validate_identity("SELECT NOW()", "SELECT CURRENT_TIMESTAMP()")
+        self.validate_identity("SELECT FROM_POSIX_TIME(1234567890)")
+        self.validate_all(
+            "SELECT FROM_POSIX_TIME(col)",
+            read={
+                "mysql": "SELECT FROM_UNIXTIME(col)",
+            },
+            write={
+                "exasol": "SELECT FROM_POSIX_TIME(col)",
+                "mysql": "SELECT FROM_UNIXTIME(col)",
+            },
+        )
+        self.validate_identity(
+            "select foo, bar from table_1 minus select foo, bar from table_2",
+            "SELECT foo, bar FROM table_1 EXCEPT SELECT foo, bar FROM table_2",
+        )
 
     def test_exasol_keywords(self):
         keywords = ["CS", "ADD", "BOOLEAN", "CALL", "CONTROL"]
@@ -212,7 +227,7 @@ class TestExasol(Validator):
             write={
                 "exasol": "SELECT BIT_LSHIFT(x, 1)",
                 "duckdb": "SELECT x << 1",
-                "presto": "SELECT BITWISE_ARITHMETIC_SHIFT_LEFT(x, 1)",
+                "presto": "SELECT BITWISE_LEFT_SHIFT(x, 1)",
                 "hive": "SELECT x << 1",
                 "spark": "SELECT SHIFTLEFT(x, 1)",
             },
@@ -228,7 +243,7 @@ class TestExasol(Validator):
             write={
                 "exasol": "SELECT BIT_RSHIFT(x, 1)",
                 "duckdb": "SELECT x >> 1",
-                "presto": "SELECT BITWISE_ARITHMETIC_SHIFT_RIGHT(x, 1)",
+                "presto": "SELECT BITWISE_RIGHT_SHIFT(x, 1)",
                 "hive": "SELECT x >> 1",
                 "spark": "SELECT SHIFTRIGHT(x, 1)",
             },
@@ -299,6 +314,12 @@ class TestExasol(Validator):
         )
         self.validate_identity("SELECT TO_CHAR(12345.6789) AS TO_CHAR")
         self.validate_identity("SELECT TO_CHAR(-12345.67890, '000G000G000D000000MI') AS TO_CHAR")
+        self.validate_all(
+            "SELECT TO_CHAR(CAST('2009-10-04 22:23:00' AS TIMESTAMP), 'DAY MONTH YYYY')",
+            read={
+                "mysql": "SELECT DATE_FORMAT('2009-10-04 22:23:00', '%W %M %Y')",
+            },
+        )
 
         self.validate_identity(
             "SELECT id, department, hire_date, GROUP_CONCAT(id ORDER BY hire_date SEPARATOR ',') OVER (PARTITION BY department rows between 1 preceding and 1 following) GROUP_CONCAT_RESULT from employee_table ORDER BY department, hire_date",
@@ -312,6 +333,22 @@ class TestExasol(Validator):
                 "tsql": "STRING_AGG(x, ',') WITHIN GROUP (ORDER BY y DESC)",
                 "databricks": "LISTAGG(DISTINCT x, ',') WITHIN GROUP (ORDER BY y DESC)",
             },
+        )
+        self.validate_identity("SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t")
+        self.validate_all(
+            "SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t",
+            read={
+                "exasol": "SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t",
+                "oracle": "SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t",
+                "snowflake": "SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t",
+            },
+        )
+        self.validate_identity("LISTAGG(x, ',' ON OVERFLOW ERROR) WITHIN GROUP (ORDER BY y)")
+        self.validate_identity(
+            "LISTAGG(x, ',' ON OVERFLOW TRUNCATE '...' WITH COUNT) WITHIN GROUP (ORDER BY y)"
+        )
+        self.validate_identity(
+            "LISTAGG(x, ',' ON OVERFLOW TRUNCATE '...' WITHOUT COUNT) WITHIN GROUP (ORDER BY y)"
         )
         self.validate_all(
             "EDIT_DISTANCE(col1, col2)",
@@ -799,6 +836,14 @@ class TestExasol(Validator):
         self.validate_identity(
             'SELECT a_year AS a_year FROM "LOCAL" GROUP BY "LOCAL".a_year',
         )
+        self.validate_identity(
+            "SELECT YEAR(a_date) AS A_YEAR FROM my_table WHERE a_year > 2020",
+            "SELECT YEAR(a_date) AS A_YEAR FROM my_table WHERE LOCAL.A_YEAR > 2020",
+        )
+        self.validate_identity(
+            "SELECT SUM(amount) AS Total FROM my_table HAVING TOTAL > 10000",
+            "SELECT SUM(amount) AS Total FROM my_table HAVING LOCAL.Total > 10000",
+        )
 
         test_cases = [
             (
@@ -839,6 +884,24 @@ class TestExasol(Validator):
                     write={"exasol": exasol_sql, "databricks": dbx_sql},
                 )
 
+    def test_regexp_like(self):
+        # Exasol uses binary predicate syntax: col REGEXP_LIKE pattern
+        self.validate_identity("SELECT x REGEXP_LIKE '.*pattern.*'")
+
+        # Cross-dialect: partial match semantics from other dialects get .* wrapping
+        self.validate_all(
+            "SELECT a REGEXP_LIKE '.*x.*'",
+            read={
+                "hive": "SELECT a RLIKE 'x'",
+                "presto": "SELECT REGEXP_LIKE(a, 'x')",
+            },
+            write={
+                "exasol": "SELECT a REGEXP_LIKE '.*x.*'",
+                "hive": "SELECT a RLIKE '.*x.*'",
+                "presto": "SELECT REGEXP_LIKE(a, '.*x.*')",
+            },
+        )
+
     def test_json(self):
         self.validate_identity("""SELECT JSON_VALUE('{"d":"a"}', '$.d' NULL ON ERROR) AS x""")
         self.validate_all(
@@ -847,4 +910,146 @@ class TestExasol(Validator):
                 "exasol": """SELECT JSON_VALUE('{"d":"a"}', '$.d' NULL ON ERROR) AS x""",
                 "trino": """SELECT JSON_VALUE('{"d":"a"}', '$.d' NULL ON ERROR) AS x""",
             },
+        )
+        self.validate_identity(
+            """SELECT JSON_EXTRACT('{"firstname" : "Ann", "surname" : "Smith", "age" : 29}', '$.firstname', '$.surname', '$.age') EMITS (firstname VARCHAR(100), surname VARCHAR(100), age INT)"""
+        )
+
+    def test_group_by_all(self):
+        self.validate_all(
+            "SELECT id, city, COUNT(*) FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT id, city, COUNT(*) FROM dealer GROUP BY 1, 2",
+                "databricks": "SELECT id, city, COUNT(*) FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT car_model, COUNT(DISTINCT city) FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT car_model, COUNT(DISTINCT city) FROM dealer GROUP BY 1",
+                "databricks": "SELECT car_model, COUNT(DISTINCT city) FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT car_model, city FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT car_model, city FROM dealer GROUP BY 1, 2",
+                "databricks": "SELECT car_model, city FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT COUNT(*) FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT COUNT(*) FROM dealer",
+                "databricks": "SELECT COUNT(*) FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT UPPER(city), COUNT(*) FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT UPPER(city), COUNT(*) FROM dealer GROUP BY 1",
+                "databricks": "SELECT UPPER(city), COUNT(*) FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT city AS c, COUNT(*) + 1 FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT city AS c, COUNT(*) + 1 FROM dealer GROUP BY 1",
+                "databricks": "SELECT city AS c, COUNT(*) + 1 FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT city, COUNT(*) OVER () FROM dealer GROUP BY ALL",
+            write={
+                "exasol": "SELECT city, COUNT(*) OVER () FROM dealer GROUP BY 1",
+                "databricks": "SELECT city, COUNT(*) OVER () FROM dealer GROUP BY ALL",
+            },
+        )
+        self.validate_all(
+            "SELECT * FROM t GROUP BY ALL",
+            write={
+                "exasol": "SELECT DISTINCT * FROM t",
+                "databricks": "SELECT * FROM t GROUP BY ALL",
+            },
+        )
+        with self.assertRaises(UnsupportedError):
+            transpile(
+                "SELECT *, COUNT(*) FROM t GROUP BY ALL",
+                write="exasol",
+                unsupported_level=ErrorLevel.RAISE,
+            )
+
+    def test_use_to_open_schema(self):
+        self.validate_all(
+            "OPEN SCHEMA test",
+            read={"mysql": "USE test"},
+            write={"exasol": "OPEN SCHEMA test"},
+        )
+        self.validate_identity("OPEN SCHEMA test")
+        self.validate_all(
+            'OPEN SCHEMA "my_database"',
+            read={"mysql": "USE `my_database`"},
+            write={"exasol": 'OPEN SCHEMA "my_database"'},
+        )
+        # USE ROLE / USE WAREHOUSE have no Exasol equivalent — emit unsupported
+        with self.assertRaises(UnsupportedError):
+            transpile(
+                "USE ROLE admin",
+                read="snowflake",
+                write="exasol",
+                unsupported_level=ErrorLevel.RAISE,
+            )
+
+    def test_show_tables(self):
+        self.validate_all(
+            "SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = 'TEST'",
+            read={"mysql": "SHOW TABLES FROM test"},
+            write={
+                "exasol": "SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = 'TEST'"
+            },
+        )
+        self.validate_all(
+            "SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = CURRENT_SCHEMA",
+            read={"mysql": "SHOW TABLES"},
+            write={
+                "exasol": "SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = CURRENT_SCHEMA"
+            },
+        )
+
+    def test_show_databases(self):
+        self.validate_all(
+            "SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS",
+            read={"mysql": "SHOW DATABASES"},
+            write={"exasol": "SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS"},
+        )
+        self.validate_all(
+            "SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS",
+            read={"mysql": "SHOW SCHEMAS"},
+            write={"exasol": "SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS"},
+        )
+
+    def test_group_by_alias_local(self):
+        # GROUP BY bare alias -> LOCAL prefix
+        self.validate_all(
+            "SELECT city, COUNT(*) AS cnt FROM t GROUP BY LOCAL.cnt",
+            read={"mysql": "SELECT city, COUNT(*) AS cnt FROM t GROUP BY cnt"},
+            write={"exasol": "SELECT city, COUNT(*) AS cnt FROM t GROUP BY LOCAL.cnt"},
+        )
+        # GROUP BY expression alias -> LOCAL prefix
+        self.validate_all(
+            "SELECT YEAR(TO_DATE(a_date)) AS a_year FROM t GROUP BY LOCAL.a_year",
+            read={"mysql": "SELECT YEAR(a_date) AS a_year FROM t GROUP BY a_year"},
+            write={"exasol": "SELECT YEAR(TO_DATE(a_date)) AS a_year FROM t GROUP BY LOCAL.a_year"},
+        )
+        # GROUP BY non-alias column -> unchanged
+        self.validate_all(
+            "SELECT city, COUNT(*) FROM t GROUP BY city",
+            read={"mysql": "SELECT city, COUNT(*) FROM t GROUP BY city"},
+            write={"exasol": "SELECT city, COUNT(*) FROM t GROUP BY city"},
+        )
+        # HAVING alias -> LOCAL prefix
+        self.validate_all(
+            "SELECT COUNT(*) AS cnt FROM t HAVING LOCAL.cnt > 1",
+            read={"mysql": "SELECT COUNT(*) AS cnt FROM t HAVING cnt > 1"},
+            write={"exasol": "SELECT COUNT(*) AS cnt FROM t HAVING LOCAL.cnt > 1"},
         )

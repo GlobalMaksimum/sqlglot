@@ -17,20 +17,51 @@ class TestMySQL(Validator):
         self.validate_identity("CREATE TABLE bar (abacate DOUBLE(10, 2) UNSIGNED)")
         self.validate_identity("CREATE TABLE t (id DECIMAL(20, 4) UNSIGNED)")
         self.validate_identity("CREATE TABLE foo (a BIGINT, UNIQUE (b) USING BTREE)")
+        self.validate_identity("CREATE TABLE foo (a VARCHAR(32) NOT NULL UNIQUE COMMENT 'test')")
         self.validate_identity("CREATE TABLE foo (id BIGINT)")
         self.validate_identity("CREATE TABLE 00f (1d BIGINT)")
         self.validate_identity("CREATE TABLE temp (id SERIAL PRIMARY KEY)")
         self.validate_identity("UPDATE items SET items.price = 0 WHERE items.id >= 5 LIMIT 10")
+        self.validate_identity("UPDATE /*+ MAX_EXECUTION_TIME(1) */ t SET a = 1")
         self.validate_identity("DELETE FROM t WHERE a <= 10 LIMIT 10")
+        self.validate_identity("DELETE /*+ MAX_EXECUTION_TIME(1) */ FROM t WHERE a = 1")
         self.validate_identity("DELETE FROM t FORCE INDEX (idx) WHERE a > 5 ORDER BY id")
         self.validate_identity("CREATE TABLE foo (a BIGINT, INDEX USING BTREE (b))")
         self.validate_identity("CREATE TABLE foo (a BIGINT, FULLTEXT INDEX (b))")
         self.validate_identity("CREATE TABLE foo (a BIGINT, SPATIAL INDEX (b))")
         self.validate_identity("CREATE TABLE foo (a INT UNSIGNED ZEROFILL)")
+        self.validate_identity("CREATE TABLE foo (a INT INVISIBLE)")
+        self.validate_identity("ALTER TABLE t ADD COLUMN c INT INVISIBLE")
         self.validate_identity("ALTER TABLE t1 ADD COLUMN x INT, ALGORITHM=INPLACE, LOCK=EXCLUSIVE")
         self.validate_identity("ALTER TABLE t ADD INDEX `i` (`c`)")
         self.validate_identity("ALTER TABLE t ADD UNIQUE `i` (`c`)")
+        self.validate_identity("ALTER TABLE t DROP PRIMARY KEY")
+        self.validate_identity("ALTER TABLE t DROP COLUMN c, DROP PRIMARY KEY, DROP INDEX `i`")
         self.validate_identity("ALTER TABLE test_table MODIFY COLUMN test_column LONGTEXT")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT NOT NULL")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT DEFAULT 5")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT NOT NULL DEFAULT 5")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c VARCHAR(50) NOT NULL DEFAULT 'foo'")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT COMMENT 'hi'")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT FIRST")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT AFTER d")
+        self.validate_identity("ALTER TABLE t MODIFY COLUMN c INT NOT NULL AFTER d")
+        self.validate_identity(
+            "ALTER TABLE t MODIFY c INT NOT NULL",
+            "ALTER TABLE t MODIFY COLUMN c INT NOT NULL",
+        )
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN a b BIGINT NOT NULL")
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN b b INT NOT NULL")
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN c d VARCHAR(50) DEFAULT 'x'")
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN c d INT COMMENT 'hi'")
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN c d INT FIRST")
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN c d INT AFTER e")
+        self.validate_identity("ALTER TABLE t CHANGE COLUMN c d INT NOT NULL AFTER e")
+        self.validate_identity(
+            "ALTER TABLE t CHANGE a b BIGINT NOT NULL",
+            "ALTER TABLE t CHANGE COLUMN a b BIGINT NOT NULL",
+        )
+        self.validate_identity("ALTER TABLE t AUTO_INCREMENT=3000000000")
         self.validate_identity("ALTER VIEW v AS SELECT a, b, c, d FROM foo")
         self.validate_identity("ALTER VIEW v AS SELECT * FROM foo WHERE c > 100")
         self.validate_identity(
@@ -139,6 +170,18 @@ class TestMySQL(Validator):
             "CREATE TABLE IF NOT EXISTS industry_info (a BIGINT(20) NOT NULL AUTO_INCREMENT, b BIGINT(20) NOT NULL, c VARCHAR(1000), PRIMARY KEY (a), UNIQUE d (b), INDEX e (b))",
         )
         self.validate_identity(
+            "CREATE TABLE t (a INT, b INT, UNIQUE KEY `Unique` (a, b))",
+            "CREATE TABLE t (a INT, b INT, UNIQUE `Unique` (a, b))",
+        )
+        self.validate_identity(
+            "CREATE TABLE t (a INT, UNIQUE KEY `Index` (a))",
+            "CREATE TABLE t (a INT, UNIQUE `Index` (a))",
+        )
+        self.validate_identity(
+            "CREATE TABLE t (a INT, UNIQUE KEY `Key` (a))",
+            "CREATE TABLE t (a INT, UNIQUE `Key` (a))",
+        )
+        self.validate_identity(
             "CREATE TABLE test (ts TIMESTAMP, ts_tz TIMESTAMPTZ, ts_ltz TIMESTAMPLTZ)",
             "CREATE TABLE test (ts TIMESTAMP, ts_tz TIMESTAMP, ts_ltz TIMESTAMP)",
         )
@@ -186,15 +229,27 @@ class TestMySQL(Validator):
             "CREATE TABLE x (id int not null auto_increment, primary key (id))",
             write={
                 "mysql": "CREATE TABLE x (id INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (id))",
-                "sqlite": "CREATE TABLE x (id INTEGER NOT NULL AUTOINCREMENT PRIMARY KEY)",
+                "sqlite": "CREATE TABLE x (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT)",
             },
         )
         self.validate_identity("ALTER TABLE t ALTER INDEX i INVISIBLE")
         self.validate_identity("ALTER TABLE t ALTER INDEX i VISIBLE")
         self.validate_identity("ALTER TABLE t ALTER COLUMN c SET INVISIBLE")
         self.validate_identity("ALTER TABLE t ALTER COLUMN c SET VISIBLE")
+        self.validate_identity("ALTER TABLE t RENAME INDEX a TO b")
+        self.validate_identity(
+            "ALTER TABLE t RENAME KEY a TO b",
+            "ALTER TABLE t RENAME INDEX a TO b",
+        )
         self.validate_identity(
             "UPDATE foo JOIN bar ON TRUE SET foo.a = bar.a WHERE foo.id = bar.id"
+        )
+        self.validate_identity(
+            "UPDATE items, month SET items.price = month.price WHERE items.id = month.id"
+        )
+        self.validate_identity("UPDATE a CROSS JOIN b SET a.x = 1")
+        self.validate_identity(
+            "UPDATE a, b LEFT JOIN c ON b.id = c.id SET a.x = 1, b.y = 2, c.z = 3"
         )
 
         # PARTITION BY RANGE - simple column
@@ -220,6 +275,10 @@ class TestMySQL(Validator):
         )
         self.validate_identity(
             "CREATE TABLE employees (id INT, store_id INT) PARTITION BY LIST (store_id) (PARTITION pNorth VALUES IN (3, 5, 6), PARTITION pSouth VALUES IN (1, 2, 10))"
+        )
+        self.validate_identity(
+            "CREATE FUNCTION f () RETURNS VARCHAR LANGUAGE SQL SQL SECURITY INVOKER SELECT 'abc'",
+            "CREATE FUNCTION f() RETURNS TEXT LANGUAGE SQL SQL SECURITY INVOKER AS SELECT 'abc'",
         )
 
     def test_identity(self):
@@ -607,6 +666,30 @@ class TestMySQL(Validator):
         self.validate_identity(
             "CONVERT('a' USING binary)", "CAST('a' AS CHAR CHARACTER SET binary)"
         )
+        self.validate_identity(
+            "SELECT CONVERT(`col` USING `utf8mb4`)",
+            "SELECT CAST(`col` AS CHAR CHARACTER SET utf8mb4)",
+        )
+        self.validate_identity(
+            "SELECT CHAR(0xC3A9 USING `utf8mb4`)",
+            "SELECT CHAR(x'C3A9' USING utf8mb4)",
+        )
+        self.validate_identity("SELECT CHAR(65 USING BINARY)")
+        self.validate_identity(
+            "SELECT CHAR(65 USING `binary`)",
+            "SELECT CHAR(65 USING binary)",
+        )
+        self.validate_identity(
+            "SELECT CONVERT(x USING `binary`)",
+            "SELECT CAST(x AS CHAR CHARACTER SET binary)",
+        )
+        self.validate_identity(
+            "SELECT CONVERT(x USING `my charset`)",
+            "SELECT CAST(x AS CHAR CHARACTER SET `my charset`)",
+        )
+        self.validate_identity(
+            "SELECT CHAR(65 USING `my charset`)",
+        )
 
     def test_match_against(self):
         self.validate_all(
@@ -650,6 +733,7 @@ class TestMySQL(Validator):
             write={
                 "mysql": "SELECT DATE_FORMAT('2017-06-15', '%Y')",
                 "snowflake": "SELECT TO_CHAR(CAST('2017-06-15' AS TIMESTAMP), 'yyyy')",
+                "exasol": "SELECT TO_CHAR(CAST('2017-06-15' AS TIMESTAMP), 'YYYY')",
             },
         )
         self.validate_all(
@@ -671,6 +755,7 @@ class TestMySQL(Validator):
             write={
                 "mysql": "SELECT DATE_FORMAT('2017-06-15', '%Y-%m-%d')",
                 "snowflake": "SELECT TO_CHAR(CAST('2017-06-15' AS TIMESTAMP), 'yyyy-mm-DD')",
+                "exasol": "SELECT TO_CHAR(CAST('2017-06-15' AS TIMESTAMP), 'YYYY-MM-DD')",
             },
         )
         self.validate_all(
@@ -706,6 +791,7 @@ class TestMySQL(Validator):
             write={
                 "mysql": "SELECT DATE_FORMAT('2007-10-04 22:23:00', '%T')",
                 "snowflake": "SELECT TO_CHAR(CAST('2007-10-04 22:23:00' AS TIMESTAMP), 'hh24:mi:ss')",
+                "exasol": "SELECT TO_CHAR(CAST('2007-10-04 22:23:00' AS TIMESTAMP), 'HH:MI:SS')",
             },
         )
         self.validate_all(
@@ -729,10 +815,12 @@ class TestMySQL(Validator):
         self.validate_all(
             "SELECT DATEDIFF(x, y)",
             read={
+                "exasol": "SELECT DAYS_BETWEEN(x, y)",
                 "presto": "SELECT DATE_DIFF('DAY', y, x)",
                 "redshift": "SELECT DATEDIFF(DAY, y, x)",
             },
             write={
+                "exasol": "SELECT DAYS_BETWEEN(x, y)",
                 "mysql": "SELECT DATEDIFF(x, y)",
                 "presto": "SELECT DATE_DIFF('DAY', y, x)",
                 "redshift": "SELECT DATEDIFF(DAY, y, x)",
@@ -855,6 +943,13 @@ class TestMySQL(Validator):
                     },
                 )
 
+        self.validate_all(
+            "WITH t AS (SELECT CAST('2020-01-10' AS DATE) AS col, 5 AS num_days) SELECT DATE_ADD(col, INTERVAL num_days DAY) FROM t",
+            write={
+                "mysql": "WITH t AS (SELECT CAST('2020-01-10' AS DATE) AS col, 5 AS num_days) SELECT DATE_ADD(col, INTERVAL num_days DAY) FROM t",
+                "postgres": "WITH t AS (SELECT CAST('2020-01-10' AS DATE) AS col, 5 AS num_days) SELECT col + INTERVAL '1 DAY' * num_days FROM t",
+            },
+        )
         self.validate_all(
             "CURDATE()",
             write={
@@ -1346,6 +1441,14 @@ COMMENT='客户账户表'"""
         self.assertIsInstance(show.args["like"], exp.Literal)
         self.assertEqual(show.text("like"), "%foo%")
 
+        show = self.validate_identity("SHOW TABLES IN test", "SHOW TABLES FROM test")
+        self.assertEqual(show.name, "TABLES")
+        self.assertEqual(show.text("db"), "test")
+
+        show = self.validate_identity("SHOW FULL TABLES IN test", "SHOW FULL TABLES FROM test")
+        self.assertTrue(show.args["full"])
+        self.assertEqual(show.text("db"), "test")
+
     def test_set_variable(self):
         cmd = self.parse_one("SET SESSION x = 1")
         item = cmd.expressions[0]
@@ -1609,3 +1712,120 @@ COMMENT='客户账户表'"""
             "CREATE TRIGGER track_deletes BEFORE DELETE ON orders FOR EACH ROW BEGIN UPDATE statistics SET delete_count = delete_count + 1 WHERE table_name = 'orders' END",
             check_command_warning=True,
         )
+
+    def test_ignore_respect_nulls(self):
+        self.validate_all(
+            "SELECT FIRST_VALUE(col1) OVER (ORDER BY col2 ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+            read={
+                "snowflake": "SELECT FIRST_VALUE(col1) IGNORE NULLS OVER (ORDER BY col2) FROM table1",
+            },
+            write={
+                "mysql": "SELECT FIRST_VALUE(col1) OVER (ORDER BY col2 ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+                "oracle": "SELECT FIRST_VALUE(col1) OVER (ORDER BY col2 NULLS FIRST ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+                "postgres": "SELECT FIRST_VALUE(col1) OVER (ORDER BY col2 NULLS FIRST ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+            },
+        )
+
+        self.validate_all(
+            "SELECT FIRST_VALUE(col1) RESPECT NULLS OVER (ORDER BY col2) FROM table1",
+            write={
+                "mysql": "SELECT FIRST_VALUE(col1) RESPECT NULLS OVER (ORDER BY col2) FROM table1",
+                "oracle": "SELECT FIRST_VALUE(col1) RESPECT NULLS OVER (ORDER BY col2 NULLS FIRST) FROM table1",
+                "postgres": "SELECT FIRST_VALUE(col1) OVER (ORDER BY col2 NULLS FIRST) FROM table1",
+                "snowflake": "SELECT FIRST_VALUE(col1) RESPECT NULLS OVER (ORDER BY col2 NULLS FIRST) FROM table1",
+            },
+        )
+
+        self.validate_all(
+            "SELECT LAST_VALUE(col1) OVER (PARTITION BY col3 ORDER BY col2 ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+            read={
+                "snowflake": "SELECT LAST_VALUE(col1) IGNORE NULLS OVER (PARTITION BY col3 ORDER BY col2) FROM table1",
+            },
+            write={
+                "mysql": "SELECT LAST_VALUE(col1) OVER (PARTITION BY col3 ORDER BY col2 ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+                "oracle": "SELECT LAST_VALUE(col1) OVER (PARTITION BY col3 ORDER BY col2 NULLS FIRST ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM table1",
+            },
+        )
+
+        self.validate_all(
+            "SELECT LAG(col1) OVER (ORDER BY CASE WHEN col2 IS NULL THEN 1 ELSE 0 END, col2) FROM table1",
+            read={
+                "snowflake": "SELECT LAG(col1) IGNORE NULLS OVER (ORDER BY col2) FROM table1",
+            },
+            write={
+                "mysql": "SELECT LAG(col1) OVER (ORDER BY CASE WHEN col2 IS NULL THEN 1 ELSE 0 END, col2) FROM table1",
+                "oracle": "SELECT LAG(col1) OVER (ORDER BY CASE WHEN col2 IS NULL THEN 1 ELSE 0 END NULLS FIRST, col2 NULLS FIRST) FROM table1",
+            },
+        )
+
+        self.validate_all(
+            "SELECT LEAD(col1, 1) RESPECT NULLS OVER (ORDER BY col2) FROM table1",
+            write={
+                "mysql": "SELECT LEAD(col1, 1) RESPECT NULLS OVER (ORDER BY col2) FROM table1",
+                "oracle": "SELECT LEAD(col1, 1) RESPECT NULLS OVER (ORDER BY col2 NULLS FIRST) FROM table1",
+                "snowflake": "SELECT LEAD(col1, 1) RESPECT NULLS OVER (ORDER BY col2 NULLS FIRST) FROM table1",
+            },
+        )
+
+    def test_null_ordering_simulation_resolves_ordered_against_projection(self):
+        # NULLS LAST simulation substitutes the matching projection's sub-AST
+        # into the CASE so it resolves in FROM-clause scope (MySQL error 1052).
+        self.validate_all(
+            "SELECT e.employee_id FROM employees AS e LEFT JOIN employee_positions AS ep"
+            " ON e.employee_id = ep.employee_id"
+            " ORDER BY CASE WHEN e.employee_id IS NULL THEN 1 ELSE 0 END, e.employee_id",
+            read={
+                "duckdb": (
+                    "SELECT e.employee_id FROM employees e"
+                    " LEFT JOIN employee_positions ep ON e.employee_id = ep.employee_id"
+                    " ORDER BY employee_id"
+                ),
+            },
+        )
+        self.validate_all(
+            "SELECT e.employee_id AS emp FROM employees AS e LEFT JOIN employee_positions AS ep"
+            " ON TRUE ORDER BY CASE WHEN e.employee_id IS NULL THEN 1 ELSE 0 END, e.employee_id",
+            read={
+                "duckdb": (
+                    "SELECT e.employee_id AS emp FROM employees e"
+                    " LEFT JOIN employee_positions ep ON TRUE ORDER BY emp"
+                ),
+            },
+        )
+        self.validate_all(
+            "SELECT e.employee_id FROM employees AS e LEFT JOIN employee_positions AS ep ON TRUE"
+            " ORDER BY CASE WHEN e.employee_id IS NULL THEN 1 ELSE 0 END, e.employee_id",
+            read={
+                "duckdb": (
+                    "SELECT e.employee_id FROM employees e"
+                    " LEFT JOIN employee_positions ep ON TRUE ORDER BY e.employee_id"
+                ),
+            },
+        )
+        self.validate_all(
+            "SELECT (-1) * col AS col FROM t1 LEFT JOIN t2 USING (id)"
+            " ORDER BY CASE WHEN (-1) * col IS NULL THEN 1 ELSE 0 END, (-1) * col",
+            read={
+                "duckdb": "SELECT (-1) * col AS col FROM t1 LEFT JOIN t2 USING(id) ORDER BY col",
+            },
+        )
+        self.validate_all(
+            "SELECT t1.x + t2.y AS s FROM t1 JOIN t2 ON t1.id = t2.id"
+            " ORDER BY CASE WHEN t1.x + t2.y IS NULL THEN 1 ELSE 0 END, t1.x + t2.y",
+            read={
+                "duckdb": "SELECT t1.x + t2.y AS s FROM t1 JOIN t2 ON t1.id = t2.id ORDER BY s",
+            },
+        )
+
+    def test_invisible_column(self):
+        expr = self.parse_one("CREATE TABLE t (c INT INVISIBLE)")
+        self.assertIsNotNone(expr.find(exp.InvisibleColumnConstraint))
+
+        expr = self.parse_one("ALTER TABLE t ADD COLUMN c INT INVISIBLE")
+        self.assertIsNotNone(expr.find(exp.InvisibleColumnConstraint))
+
+    def test_alter_table_auto_increment(self):
+        prop = self.parse_one("ALTER TABLE t AUTO_INCREMENT=3000000000").find(
+            exp.AutoIncrementProperty
+        )
+        self.assertEqual(prop.this.to_py(), 3000000000)
